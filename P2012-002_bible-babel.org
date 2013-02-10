@@ -1,0 +1,1930 @@
+﻿* Project Babel-Bible - v1.9
+was formerly (till <2013-02-10 dim.>) P2012-002_Marc_exploiter_texte_grec_v1.94.org
+** F5 - Log
+- 1.7 :: début
+- 1.71 :: <2012-12-31 lun.> unification du traitement des marqauage, par universalisation des query-replace-regexp
+          reprise du texte de marc non traité
+- 1.72 :: <2012-12-31 lun.> création d'un "progn" pour application de tout le traitement jusqu'avant la mise en tableau
+- 1.73 :: <2012-12-31 lun.> 1.72 est validé, 1.73 vise à mettre tout dans une structure org avec tableaux
+- 1.732 :: <2012-12-31 lun.> ça avance, y compris traitement de la ponctuation
+- 1.74 :: <2012-12-31 lun.> OK - la mise en tableau fonctionne
+- 1.741 :: <2012-12-31 lun.> - léger bug dans la 1.74, les headers de verset n'i=ont qu'un seul ¤, corrigé dans la 1.741 par deux ¤
+- 1.75 :: <2012-12-31 lun.> mise en tableau des headers "verset" - attention, il y a un léger bug dans la 1.74, corrigé dans la 1.741
+- 1.751 :: <2013-01-02 mer.> meilleure structuration livre vs chapitres vs intertitres
+- 1.8 :: <2013-01-04 ven.> - démarrage de la 1.8 avec traitement "direct"
+- 1.81 :: <2013-01-05 sam.> suite
+- 1.82 :: <2013-01-06 dim.> mise au point - ok, validé
+- 1.83 :: <2013-01-07 lun.> recherche de chiasmes
+- 1.84 :: <2013-01-10 jeu.> 1.83 a un bug non trouvé
+- 1.85 :: <2013-01-10 jeu.> 1.84 fonctionne, mais les boucles "while /query-replace-regexp plantent en sortie, obligeant à relance l'exécution de la suite du code
+- 1.86 :: <2013-01-20 dim.> correction des boucles while qui ne fonctionnent pas, et début d'utilisation d'org-babel - validé sur Mark_1to2 le <2013-01-21 lun. 09:07>
+- 1.90 :: <2013-01-21 lun.> réécriture partielle de code pour clarifier, et test sur tout Marc - introduction partielle pour évoluer dans le texte de l'approche "narrow-to-element" ou le element est le tableau "book"
+- 1.91 :: <2013-02-02 sam.> normalisation des versets strong et début de présentation de chiasmes
+- 1.92 :: <2013-02-02 sam.> suite du 1.91, avec test complet de l'algo du 1.91 - la v1.92 est validée
+- 1.93 :: <2013-02-09 sam.> début de refactorisation avec introduction de fonctions
+
+
+
+** principes
+*** versions 1.7
+- abandon de la voie du 1.6 de type "html-to-org" ; en effet, le html est trop malformé ou tout au moins irrégulier
+- repérage et marquage préalable des balises contenant l'information
+- puis suppression des autres balises
+- puis mise en forme
+
+*** versions 1.8
+- abandon de la voie 1.7, presqu'aboutie en 1.751, car proche de fonctionner, mais compliquée, et j'ai peur qu'elle soit en O(n²), danc potentiellement impraicable sur des textes longs 
+- démarrage de la 1.8 avec traitement "direct"
+- traitement de l'info utile à l'avancement du texte
+- 1er passage = traitement des chapitres
+- 2ème passage = traitement des intertitres
+- 3ème passage = traitement des mots (avec verset éventuellement)
+
+
+*** versions 1.9
+- refactoring de la 1.8, en évoluant vers org-babel
+- test sur Marc 1 à 16
+
+
+** F4e
+- potentiellementtrès utile
+  http://www.ergoemacs.org/emacs/elisp_idioms.html
+  http://www.ergoemacs.org/emacs/elisp_basics.html
+- utilisation de replace-match
+  http://stackoverflow.com/questions/6395898/emacs-how-do-i-replace-regexp-with-a-lisp-function-in-a-defun
+- utilisation de save-excursion et save-restrictions
+  http://stackoverflow.com/questions/11596010/what-does-buffers-restrictions-mean-in-save-restriction
+
+#+name: a_quoi_sert_cette_fonction_?_<2013-01-21 lun.>
+#+BEGIN_SRC elisp
+   (defun put-in-par (str)
+     (concat "(" str ")")
+   )
+   
+   (defun upcs-luke ()
+     (interactive)
+     (goto-char 1)
+     (while (search-forward-regexp "(\\([^\\)]+\\))" nil t) 
+       (replace-match (put-in-par (upcase (match-string 1))) t nil)))
+
+#+END_SRC
+
+#+RESULTS:
+: 1
+
+  
+- ou encore
+  http://brlcad.org/wiki/Emacs
+  #+BEGIN_SRC elisp
+    (defun ws2 ()
+      "Removes embedded white space (particularly tabs)"
+      (interactive)
+      (save-excursion
+        (goto-char (point-min))
+        (while (query-replace-regexp "\\([[:alnum:]_*(\[{@<>+#!\"'-]\\)[    ]*      [       ]*\\([[:alnum:]_*(\[{@<>+#!\"'-][[:alnum:]_*(\[{@<>+#!\"'-]?\\)[         ]+" "\\1 \\2 "))
+        (goto-char (point-min))
+        (while (query-replace-regexp "\\([[:alnum:]_*(\[{@<>+#!\"'-]\\)[    ]*      [       ]*\\([[:alnum:]_*(\[{@<>+#!\"'-]\\)" "\\1 \\2"))
+        (goto-char (point-min))
+        (while (query-replace-regexp "\\([[:alnum:]_*(\[{@<>+#!\"'-]\\)[    ]+ +[   ]*\\([[:alnum:]_*(\[{@<>+#!\"'-]\\)" "\\1 \\2"))
+        ))
+  #+END_SRC
+
+
+** F5 - idées d'évolution
+
+*** idées pour une v2 ou v3
+- en v2 ou v3, ou pourrait traiter les balises comme en v1.75, mais au lieu de faire un post-traitement particulier pour obtenir une structure de type org, basculer à ce moment sur un "html-to-org". En effet, le traitement des balises comme en v1.75 donne un html parfait
+  - se renseigner sur "ce qu'est du html" parfait, ou du xhtml ou du xml.
+- et faire vraiment du org-babel, en mettant le texte à traiter sous une balise adéquate #+name etc
+- et insérer tous les fichiers issus d'interlinear via curl par une boucle (while ... incrémenter_compteur_i .... insert mark_i....)
+
+** known bugs and limitations
+- DONE limitation : le côté interactif qui demande quelques confirmations "y" ou plutôt "!" inutiles
+- limitation : pas testé sur le texte hébreu
+- limitation : les intertitres anglais doivent forcément précéder un mot contenant un verset (du moins je crois, pas testé autrement), sinon, risque de bug (?)
+- pour des raisons de contraintes des regexp (pas plus de 9 sub-expressions), on abandonne de l'info, a priori redondante
+- bug <2013-01-06 dim.> : il y a des "&#8211;", à remplacer par des tirets "-" et des "&nbsp;" accolés à d'autre caractères, qui trainent dans la colonne "anglais"
+
+** algorithme
+*** utility
+#+name: toggle_query
+#+BEGIN_SRC 
+" toggle replace-regexp => query-replace-regexp "
+(query-replace-regexp "[^-]replace-regexp" "query-replace-regexp")
+#+END_SRC
+
+*** algorithme à exécuter par (org-babel-execute-subtree)
+**** pré-traitement intégré des "&nbsp;" et des "&#8212;" et des \n
+
+#+name: pre-treatment
+#+BEGIN_SRC elisp :results append
+  (progn 
+    ;; insertion du fichier à traiter
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (next-line)
+    (insert-file-contents "~/Téléchargements/interlinear/mark_1to2")
+
+    ;; début du pré-traitement
+    (goto-char (point-min))
+    (goto-char (search-forward-regexp "13146597465"))
+    ;; (query-replace-regexp "query-replace-regexp" "replace-regexp")  ;; attention, permet de passer en mode non-query
+    (goto-char (search-forward-regexp "<¤ST[A]RT¤>")) 
+    (replace-regexp ">\n\n+<" ">\n<")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "\\>&nbsp;\\<" " ")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp ">\\(&nbsp;\\)*&#8212;<" ">-<")
+    (goto-char (point-min))
+    (goto-char (search-forward-regexp "16481231566185")))
+#+END_SRC
+
+#+RESULTS: pre-treatment
+: 18818
+: 18839
+: 18856
+: 18856
+: 6824
+: 6824
+: 6824
+: 6824
+: 6824
+: 6824
+
+***** DEPRECATED pas à pas pré-traitement détaillé des "&nbsp;" et des "&#8212;" et des \n
+- [X] remplacer par un blancs les séquences "&nbsp;" entre deux mots : (query-replace-regexp "\\>&nbsp;\\<" " ")
+- [X] remplacer par un tiret les séquences "&#8212;" entre deux balises : (query-replace-regexp ">\\(&nbsp;\\)*&#8212;<" ">-<")
+- [X] supprimer les \n : 
+      (progn 
+          (goto-char (search-forward-regexp "<¤ST[A]RT¤>")) 
+          (query-replace-regexp ">\n\n+<" ">\n<")
+          (goto-char (search-backward-regexp "46546185")))
+
+**** traitement intégré : chapitres, intertitres, retours à la ligne, indentations, versets, mots 
+
+- [ ] 
+#+name: treatment
+#+BEGIN_SRC elisp :results append
+  (progn 
+    (goto-char (search-forward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "<head><title>\\(.*?\\([1-9][0-9]?\\).*?\\)<.*?</head>" "\n|chapter|\\2||||\\1|\n")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "<span class=.title.>\\(.*\\)</span>" "\n|title|||||\\1|\n")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "</td></tr></table><table width=.800. border=.0. cellspacing=.0. cellpadding=.0. align=.center.><tr><td>" "\n|RL||\n")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "\\(<table class=\"tablefloat\".*?\"middle\"><span class=\"spc.?\">.*?</table>\\)\\(.*\\)$" "\n|indentation||\n\\2")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "\\(<table class=\"tablefloat\".*?\"middle\".*?>\\).*?\\(<span class=\"pos\">.*?\\)<span class=\"reftrans\">.*?\\(<span class=\"translit\".*?\\)<span class=\"refmain\">\\([1-9][0-9]?\\).*?\\(<span class=\"greek\">.*?\\)<span class=\"refbot\">.*?\\(<span class=\"eng\">.*?\\)<span class=\"reftop2\">.*?\\(<span class=\"strongsnt.*\\)" "\n|verse|\\4|\\1\\2\\3\\5\\6\\7")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "<table class=\"tablefloat\">.*<span class=\"pos\"><a href=\".*?\" title=\"\\(.*?\\)\">\\([1-9][0-9]?[0-9]?[0-9]?\\)<.*?<span class=\"strongsnt\"><a href=\".*?\" title=\"\\(.*?\\)\">\\[e]<.*?<span class=\"translit\"><a href=\".*?\" title=\"\\(.*?\\)\">\\(.*?\\)<.*?<span class=\"greek\">\\(.*?\\)<.*?<.*?<span class=\"eng\">\\(.*?\\)<.*?<span class=\"strongsnt\"><a href=\".*?\" title=\"\\(.*?\\)\">\\(.*?\\)<.*>$" "\n|word||\\1|\\2|\\3|\\4|\\5|\\6|\\7|\\8|\\9|")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "|\n+[^|]*\n|" "|\n|")
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+    (replace-regexp "^<html>\n\\(|.*?|.*|\\)\\(.*?\\) 1" "|book|||||\\2\n\\1\\2 1")
+    (goto-char (point-min))
+    (replace-regexp "^\\(* <¤ST[A]RT¤>[^|]*\\)" "\\1| <4> | <8> | <4> | <4> | <4> | <20> | <10> | <20> | <10> | <35> | <10> |\n")
+    (goto-char (point-min))
+    (replace-regexp "^\\(* <¤ST[A]RT¤>[^|]*\\)" "\\1#+tblname: book\n|livre | L_C:v |  | NNNN |  |  | translit. | greek | english | grammar | gram. |\n")
+    (goto-char (point-min))
+    (goto-char (search-forward-regexp "123455461")))
+  
+  
+#+END_SRC
+
+#+RESULTS: treatment
+: 21908
+: 21937
+: 21962
+: 21970
+: 10112
+: 10119
+: 10126
+: 10150
+: 10157
+: 10164
+
+***** DEPRECATED <2013-01-06 dim.> traitement pas à pas détaillé : chapitres, intertitres, retours à la ligne, indentations, versets, mots 
+****** traitement des chapitres
+- xxxxxxxxxxxxxxxxxxxxxxxxxxxx à faire, la question étant : sur combien de colonnes xxxxxxxxxxxxxxxxxx
+- [X] (query-replace-regexp "<head><title>\\(.*?\\)<.*?</head>" "\n|\\1||")
+****** traitement des intertitres
+- xxxxxxxxxxxxxxxxxxxxxxxxxxxx à faire, la question étant : sur combien de colonnes xxxxxxxxxxxxxxxxxx
+- [X] (query-replace-regexp "<span class=.title.>\\(.*\\)</span>" "\n|\\1||")
+
+
+****** traitement des retours à la ligne
+- je supppose les retours à la lignes portés par : </td></tr></table><table width="800" border="0" cellspacing="0" cellpadding="0" align="center"><tr><td>
+
+- [X] (query-replace-regexp "</td></tr></table><table width=.800. border=.0. cellspacing=.0. cellpadding=.0. align=.center.><tr><td>" "\n|RL||")
+
+****** traitement des indentations
+
+quand on en est là, regarder si on ne peut pas manger davantage de texte lors de la query-replace-regexp
+
+- [X] (query-replace-regexp "\\(<table class=\"tablefloat\".*?\"middle\"><span class=\"spc.?\">.*?</table>\\)\\(.*\\)$" "\n|indentation||\\2")
+
+  
+****** normalisation des mots par traitement des § de mots portant un n° de verset
+- une difficulté est que, sur les § de mots portant verset, il y a plus de 9 informations , donc pas accessible par regexp (limitées à 9 sub-expressions)
+- d'où la nécessité de traiter le n° de verset dans un premier passage, en laissant une forme "normalisée" du § de mot
+- normalisé = tous les mots vont pouvoir se traiter à l'identique
+- [X] (query-replace-regexp "\\(<table class=\"tablefloat\".*?\"middle\".*?>\\).*?\\(<span class=\"pos\">.*?\\)<span class=\"reftrans\">.*?\\(<span class=\"translit\".*?\\)<span class=\"refmain\">\\([1-9][0-9]?\\).*?\\(<span class=\"greek\">.*?\\)<span class=\"refbot\">.*?\\(<span class=\"eng\">.*?\\)<span class=\"reftop2\">.*?\\(<span class=\"strongsnt.*\\)" "\n|\\4||\\1\\2\\3\\5\\6\\7")
+
+****** traitement des mots
+- pour des raisons de contraintes des regexp (pas plus de 9 sub-expressions), on abandonne de l'info, a priori redondante
+
+- (query-replace-regexp "<table class=\"tablefloat\">.*<span class=\"pos\"><a href=\".*?\" title=\"\\(.*?\\)\">\\([1-9][0-9]?[0-9]?[0-9]?\\)<.*?<span class=\"strongsnt\"><a href=\".*?\" title=\"\\(.*?\\)\">\\[e]<.*?<span class=\"translit\"><a href=\".*?\" title=\"\\(.*?\\)\">\\(.*?\\)<.*?<span class=\"greek\">\\(.*?\\)<.*?<.*?<span class=\"eng\">\\(.*?\\)<.*?<span class=\"strongsnt\"><a href=\".*?\" title=\"\\(.*?\\)\">\\(.*?\\)<.*>$" "\n|||\\1|\\2|\\3|\\4|\\5|\\6|\\7|\\8|\\9|")
+
+****** suppression du texte inutile
+- (query-replace-regexp "|\n+[^|\n]*\n|" "|\n|")
+
+****** définition des largeurs de colonnes
+- (query-replace-regexp "^\\(\\* <¤ST[A]RT¤>[^|]*\\)" "\\1| <10> | <10> | <10> | <10> | <10> | <10> | <10> | <10> | <10> | <10> | <10> |\n")
+
+
+
+
+****** création d'un ligne "book" = intitulé du livre - DEPRECATED car fait partie du le traitement intégré
+#+BEGIN_SRC 
+(;;query-replace-regexp "^<html>\n\\(.*\\)\n\\(|.*?|.*|\\)\\(.*?\\) 1" "|book|||||\\3\n\\1\n\\2\\3 1")
+#+END_SRC
+
+
+
+**** post traitement
+***** intégré
+****** TODO orgtbl-ctrl-c-ctrl-c	      M-x ... RET
+****** le code :
+
+
+#+name post_treatment
+#+BEGIN_SRC elisp :results append
+  (defun goto-next-or-same-chapter()
+    (progn 
+      (re-search-forward "^| *verse *" (point-max) t)
+      (re-search-backward "^| *chapter *" (point-min) t)))
+    
+  (progn
+    (goto-char (search-forward-regexp "<[¤]START¤>"))
+    
+    ;; inscription du symbole du livre
+    (replace-regexp "^| *book *| *|" "|book|Mc|")
+    (goto-char (search-backward-regexp "<¤[S]TART¤>"))
+    
+    ;; normalisation à 2 chiffres des n° de chapitres et versets
+    (replace-regexp "^| *\\(chapter\\|verse\\) *| *\\([1-9][^0-9]\\)" "| \\1 | 0\\2")
+    ;; (goto-char (search-backward-regexp "<¤S[T]ART¤>"))
+    (goto-char (point-max))
+    (goto-char (search-backward-regexp "<¤[S]TART¤>"))
+    
+    ;; propager les références livre/chapitre/verset
+    (save-excursion
+      (save-restriction
+        (goto-char (point-max))
+        (goto-char (search-backward-regexp "<¤ST[A]RT¤>"))
+        (org-narrow-to-subtree)
+        ;; propagation de book à chapter
+        (goto-char (point-min))
+        (while (re-search-forward "^| *book *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *chapter *| *\\([0-9][0-9]\\)" (point-max) t)
+          (replace-match 
+           (concat "| book | " (match-string 1) " |" (match-string 2) " \n| chapter | " (match-string 1) "_" (match-string 3)))
+          (goto-char (point-min)))
+        
+        ;; propagation de chapter à verse
+        (goto-char (point-min))
+        (while (re-search-forward "^| *chapter *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *verse *| *\\([0-9][0-9]\\)" (point-max) t)
+          (replace-match 
+           (concat "| chapter | " (match-string 1) " |" (match-string 2) "\n| verse | " (match-string 1) ":" (match-string 3)))
+          (goto-next-or-same-chapter))
+        
+        ;; propager sur le premier word après un verse
+        (goto-char (point-min))
+        (replace-regexp "^| *verse *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *word *| *|" "| verse | \\1 |\\2\n| word | \\1|")
+        
+        ;; puis propager de word en word adjacent (ou toute ligne or "verse")
+        (goto-char (point-min))
+        (while (re-search-forward "^| *\\(title\\|RL\\|indentation\\|word\\) *| *\\([^_]+_[0-9][0-9]:[0-9][0-9]\\) *|\\(.*?\\)\n| *\\(title\\|RL\\|indentation\\|word\\) *| *|" (point-max) t)
+          (replace-match 
+           (concat "| " (match-string 1) " | " (match-string 2) " |" (match-string 3) "\n| " (match-string 4) " | " (match-string 2) " |"))
+          (goto-char (point-min)))))
+  
+    ; normalisation à 4 chiffres des n° strong à un, deux ou 3 chiffre
+    ; attention, contrairement au code qui précède, on utilise pour évoluer dans le texte l'approche bien meilleure "narrow-to-element" ou le element est le tableau
+    (save-excursion
+      (save-restriction
+        (goto-char (point-min))
+        (goto-char (search-forward-regexp "^#\\+tblname: book"))
+        (org-narrow-to-element)
+    
+        ;; normalisation à 4 chiffres des n° strong à un seul chiffre
+        (goto-char (point-min))
+        (replace-regexp "^| *word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9]\\) *|" "| word | \\1 | \\2 | 000\\3 |")
+        
+        ;; normalisation à 4 chiffres des n° strong à deux chiffres
+        (goto-char (point-min))
+        (replace-regexp "^| *word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9][0-9]\\) *|" "| word | \\1 | \\2 | 00\\3 |")
+        
+        ;; normalisation à 4 chiffres des n° strong à 3 chiffres
+        (goto-char (point-min))
+        (replace-regexp "^| word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9][0-9][0-9]\\) *|" "| word | \\1 | \\2 | 0\\3 |"))))
+    #+END_SRC
+
+
+****** TEMP <2013-02-02 sam.>
+#+name: retablir-n°-strongs à 1,2 ou 3 chiffres
+#+BEGIN_SRC 
+(query-replace-regexp "^| word *| \\([^|]*?\\) *| \\([^|]*?\\) | +00?0?" "| word | \\1 | \\2 | ")
+#+END_SRC
+
+
+
+***** DEPRECATED pas à pas détaillé
+****** code du livre : "Mc"
+#+BEGIN_SRC 
+(query-replace-regexp "^| *book *| *|" "|book|Mc|")
+#+END_SRC
+
+****** normalisation à 2 chiffres des numérations
+#+BEGIN_SRC elisp
+  (replace-regexp "^| *\\(chapter\\|verse\\) *| *\\([1-9][^0-9]\\)" "| \\1 | 0\\2")
+#+END_SRC
+
+
+****** codage du livre_chapitre:verset pour tous les "word"
+
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+cette approche n'est pas optimale ; probablement en O(n2)
+Mieux vaudra reporter le code du livre sur tous les =chapters=, puis le code "livre&chapitre" sur chaque =verse=; puis le code complet sur chaque =word= ;
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx à faire à la place du code ci-dessous xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+
+#+BEGIN_SRC elisp
+  DEPRECATED pour cause de STACK OVERFLOW (while (query-replace-regexp "^| *book *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *chapter *| *\\([0-9][0-9]?\\)\\([^¤]*?\\)\n| *verse *| *\\([0-9][0-9]?\\)\\([^¤]*?\\)\n| *word *| *|" "| book | \\1|\\2\n| chapter | \\3\\4\n| verse | \\5\\6\n| word | \\1_\\3:\\5 |") (goto-char(search-backward-regexp "<¤ST[A]RT¤>")))
+#+END_SRC
+
+#+NAME propager le nom du livre
+#+BEGIN_SRC elisp
+
+(while (replace-regexp "^| *book *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *chapter *| *\\([0-9][0-9]\\)" "| book | \\1 |\\2\n| chapter | \\1_\\3") (goto-char(search-backward-regexp "<¤ST[A]RT¤>")))
+#+END_SRC
+
+#+NAME propager les chapitres sur les "verse"
+#+BEGIN_SRC elisp
+"attention au "not" nécessaire si et ssi le replace-regexp n'est pas en mode query"
+(while (not(replace-regexp "^| *chapter *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *verse *| *\\([0-9][0-9]\\)" "| chapter | \\1 |\\2\n| verse | \\1:\\3")) (goto-char(search-backward-regexp "<¤ST[A]RT¤>")))
+#+END_SRC
+
+#+NAME propager les versets sur les "word"
+#+BEGIN_SRC elisp
+"attention au "not" nécessaire si et ssi le replace-regexp n'est pas en mode query"
+(while (not(replace-regexp "^| *verse *| *\\(.*?\\) *|\\([^¤]*?\\)\n| *word *| *|" "| verse | \\1 |\\2\n| word | \\1|")) (goto-char(search-backward-regexp "<¤ST[A]RT¤>")))
+#+END_SRC
+
+
+
+
+
+****** DONE normaliser les n° STRONG, et intégrer 
+#+name: normaliser-n°-strong-ALPHA
+  #+BEGIN_SRC elisp
+    ;; normalisation à 4 chiffres des n° strong à un seul chiffre
+    (goto-char (point-min))
+    (replace-regexp "^| word *| \\([^|]*?\\) *| \\([^|]*?\\) | +\\([1-9]\\) " "| word | \\1 | \\2 | 000\\3")
+    
+    ;; normalisation à 4 chiffres des n° strong à deux chiffres
+    (goto-char (point-min))
+    (replace-regexp "^| word *| \\([^|]*?\\) *| \\([^|]*?\\) | +\\([1-9][0-9]\\) " "| word | \\1 | \\2 | 00\\3")
+    
+    ;; normalisation à 4 chiffres des n° strong à 3 chiffres
+    (goto-char (point-min))
+    (replace-regexp "^| word *| \\([^|]*?\\) *| \\([^|]*?\\) | +\\([1-9][0-9][0-9]\\) " "| word | \\1 | \\2 | 0\\3")
+    
+  #+END_SRC
+
+
+
+** recherche de chiasmes
+
+
+- fonctionne mais sort des mots inintéressants : "^| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\).*\n[^¤]\\{1,1000\\}| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\).*\n[^¤]\\{1,1000\\}\\2.*\n[^¤]\\{1,1000\\}\\1"
+- filtré par imposition de mots de taille minimale 5 : "^| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\)[^|]*|[^|]*| [^ ]\\{5\\}.*\n[^¤]\\{1,1000\\}| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\)[^|]*|[^|]*| [^ ]\\{5\\}.*\n[^¤]\\{1,1000\\}\\2.*\n[^¤]\\{1,1000\\}\\1"
+- idem, avec 10.000 caractères entre le 1er et le 2ème terme, mais impossible d'accroitre les autres intervalles, car donne un stack overflow : "^| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\)[^|]*|[^|]*| [^ ]\\{5\\}.*\n[^¤]\\{1,10000\\}| +| +| .*?\\(| +[0-9]\\{1,4\\} +|\\)[^|]*|[^|]*| [^ ]\\{5\\}.*\n[^¤]\\{1,1000\\}\\(\\2\\).*\n[^¤]\\{1,1000\\}\\(\\1\\)"
+
+
+
+
+
+
+** extraction des mots grecs
+
+NB. une meilleure approche serait d'extraire N colonnes, N variable, mais je ne sais pas faire pour l'instant ...
+
+Dans un premier temps, on reconstruit une table extraite avec les 3 colonnes cibles
+
+résultat visé (exemple): 
+#+BEGIN_SRC local
+(query-replace-regexp "| " "")
+#+END_SRC
+
+| ref      | greek                                           | french                                              | StrongNr                             |
+|----------+-------------------------------------------------+-----------------------------------------------------+--------------------------------------|
+| Mc_01:01 | ΑΡΧΗ τοῦ εὐαγγελίου Ἰησοῦ Χριστοῦ [υἱοῦ θεοῦ]   | Commencement de l'annonce de grâces de Jésus Christ | 746 3588 2098 2424 5547 5207 2316    |
+| Mc_01:02 | Καθὼς γέγραπται ἐν τῷ Ἠσαίᾳ τῷ προφήτῃ          | comme il est écrit en Isaïe le prophète             | 2531 1125 1722 3588 2268 3588 4396   |
+|          | Ἰδοὺ ἀποστέλλω τὸν ἄγγελόν μου πρὸ προσώπου σου | vois j'envoie mon messager devant ta face           | 3708 649 3588 32 1473 4253 4383 4771 |
+|          | ὃς κατασκευάσει τὴν ὁδόν σου                    | qui préparera ta voie                               | 3739 2680 3588 3598 4771             |
+|          | Φωνὴ βοῶντος ἐν τῇ ἐρήμῳ                        | voix qui crie en solitude                           |                                      |
+|          |                                                 |                                                     |                                      |
+  
+
+
+
+
+#+name: extract-3-cols(col1=book[,1], col2=book[,3], col3=book[,7])
+#+BEGIN_SRC elisp
+(mapcar* 'list col1 col2 col3)
+
+
+
+#+END_SRC
+
+#+RESULTS: extract-3-cols
+| L_C:v    | NNNN | greek                |
+| <8>      |  <4> | <20>                 |
+| Mc       |      |                      |
+| Mc_01    |      |                      |
+|          |      |                      |
+|          |      |                      |
+|          |      |                      |
+| Mc_01:01 |      |                      |
+| Mc_01:01 |  746 | ΑΡΧΗ                 |
+| Mc_01:01 | 3588 | τοῦ                  |
+| Mc_01:01 | 2098 | εὐαγγελίου           |
+| Mc_01:01 | 2424 | Ἰησοῦ                |
+| Mc_01:01 | 5547 | Χριστοῦ              |
+| Mc_01:01 | 5207 | [υἱοῦ                |
+| Mc_01:01 | 2316 | θεοῦ]                |
+| Mc_01:01 |      |                      |
+| Mc_01:01 |      |                      |
+| Mc_01:02 |      |                      |
+| Mc_01:02 | 2531 | Καθὼς                |
+| Mc_01:02 | 1125 | γέγραπται            |
+| Mc_01:02 | 1722 | ἐν                   |
+| Mc_01:02 | 3588 | τῷ                   |
+| Mc_01:02 | 2268 | Ἠσαίᾳ                |
+| Mc_01:02 | 3588 | τῷ                   |
+| Mc_01:02 | 4396 | προφήτῃ              |
+| Mc_01:02 |      |                      |
+| Mc_01:02 |      |                      |
+| Mc_01:02 | 3708 | Ἰδοὺ                 |
+| Mc_01:02 |  649 | ἀποστέλλω            |
+| Mc_01:02 | 3588 | τὸν                  |
+| Mc_01:02 |   32 | ἄγγελόν              |
+| Mc_01:02 | 1473 | μου                  |
+| Mc_01:02 | 4253 | πρὸ                  |
+| Mc_01:02 | 4383 | προσώπου             |
+| Mc_01:02 | 4771 | σου                  |
+| Mc_01:02 |      |                      |
+| Mc_01:02 |      |                      |
+| Mc_01:02 | 3739 | ὃς                   |
+| Mc_01:02 | 2680 | κατασκευάσει         |
+| Mc_01:02 | 3588 | τὴν                  |
+| Mc_01:02 | 3598 | ὁδόν                 |
+| Mc_01:02 | 4771 | σου                  |
+| Mc_01:02 |      |                      |
+| Mc_01:02 |      |                      |
+| Mc_01:03 |      |                      |
+| Mc_01:03 | 5456 | Φωνὴ                 |
+| Mc_01:03 |  994 | βοῶντος              |
+| Mc_01:03 | 1722 | ἐν                   |
+| Mc_01:03 | 3588 | τῇ                   |
+| Mc_01:03 | 2048 | ἐρήμῳ                |
+| Mc_01:03 |      |                      |
+| Mc_01:03 |      |                      |
+| Mc_01:03 | 2090 | Ἑτοιμάσατε           |
+| Mc_01:03 | 3588 | τὴν                  |
+| Mc_01:03 | 3598 | ὁδὸν                 |
+| Mc_01:03 | 2962 | Κυρίου               |
+| Mc_01:03 |      |                      |
+| Mc_01:03 |      |                      |
+| Mc_01:03 | 2117 | εὐθείας              |
+| Mc_01:03 | 4160 | ποιεῖτε              |
+| Mc_01:03 | 3588 | τὰς                  |
+| Mc_01:03 | 5147 | τρίβους              |
+| Mc_01:03 |  846 | αὐτοῦ                |
+| Mc_01:03 |      |                      |
+| Mc_01:04 |      |                      |
+| Mc_01:04 | 1096 | ἐγένετο              |
+| Mc_01:04 | 2491 | Ἰωάννης*             |
+| Mc_01:04 | 3588 | ὁ                    |
+| Mc_01:04 |  907 | βαπτίζων             |
+| Mc_01:04 | 1722 | ἐν                   |
+| Mc_01:04 | 3588 | τῇ                   |
+| Mc_01:04 | 2048 | ἐρήμῳ                |
+| Mc_01:04 | 2532 | [καὶ]                |
+| Mc_01:04 | 2784 | κηρύσσων             |
+| Mc_01:04 |  908 | βάπτισμα             |
+| Mc_01:04 | 3341 | μετανοίας            |
+| Mc_01:04 | 1519 | εἰς                  |
+| Mc_01:04 |  859 | ἄφεσιν               |
+| Mc_01:04 |  266 | ἁμαρτιῶν             |
+| Mc_01:05 |      |                      |
+| Mc_01:05 | 2532 | καὶ                  |
+| Mc_01:05 | 1607 | ἐξεπορεύετο          |
+| Mc_01:05 | 4314 | πρὸς                 |
+| Mc_01:05 |  846 | αὐτὸν                |
+| Mc_01:05 | 3956 | πᾶσα                 |
+| Mc_01:05 | 3588 | ἡ                    |
+| Mc_01:05 | 2449 | Ἰουδαία              |
+| Mc_01:05 | 5561 | χώρα                 |
+| Mc_01:05 | 2532 | καὶ                  |
+| Mc_01:05 | 3588 | οἱ                   |
+| Mc_01:05 | 2415 | Ἱεροσολυμῖται*       |
+| Mc_01:05 | 3956 | πάντες               |
+| Mc_01:05 | 2532 | καὶ                  |
+| Mc_01:05 |  907 | ἐβαπτίζοντο          |
+| Mc_01:05 | 5259 | ὑπ'                  |
+| Mc_01:05 |  846 | αὐτοῦ                |
+| Mc_01:05 | 1722 | ἐν                   |
+| Mc_01:05 | 3588 | τῷ                   |
+| Mc_01:05 | 2446 | Ἰορδάνῃ              |
+| Mc_01:05 | 4215 | ποταμῷ               |
+| Mc_01:05 | 1843 | ἐξομολογούμενοι      |
+| Mc_01:05 | 3588 | τὰς                  |
+| Mc_01:05 |  266 | ἁμαρτίας             |
+| Mc_01:05 |  846 | αὐτῶν                |
+| Mc_01:06 |      |                      |
+| Mc_01:06 | 2532 | καὶ                  |
+| Mc_01:06 | 1510 | ἦν                   |
+| Mc_01:06 | 3588 | ὁ                    |
+| Mc_01:06 | 2491 | Ἰωάννης*             |
+| Mc_01:06 | 1746 | ἐνδεδυμένος          |
+| Mc_01:06 | 2359 | τρίχας               |
+| Mc_01:06 | 2574 | καμήλου              |
+| Mc_01:06 | 2532 | καὶ                  |
+| Mc_01:06 | 2223 | ζώνην                |
+| Mc_01:06 | 1193 | δερματίνην           |
+| Mc_01:06 | 4012 | περὶ                 |
+| Mc_01:06 | 3588 | τὴν                  |
+| Mc_01:06 | 3751 | ὀσφὺν                |
+| Mc_01:06 |  846 | αὐτοῦ                |
+| Mc_01:06 | 2532 | καὶ                  |
+| Mc_01:06 | 2068 | ἐσθίων*              |
+| Mc_01:06 |  200 | ἀκρίδας              |
+| Mc_01:06 | 2532 | καὶ                  |
+| Mc_01:06 | 3192 | μέλι                 |
+| Mc_01:06 |   66 | ἄγριον               |
+| Mc_01:07 |      |                      |
+| Mc_01:07 | 2532 | καὶ                  |
+| Mc_01:07 | 2784 | ἐκήρυσσεν            |
+| Mc_01:07 | 3004 | λέγων                |
+| Mc_01:07 | 2064 | Ἔρχεται              |
+| Mc_01:07 | 3588 | ὁ                    |
+| Mc_01:07 | 2478 | ἰσχυρότερός          |
+| Mc_01:07 | 1473 | μου                  |
+| Mc_01:07 | 3694 | ὀπίσω                |
+| Mc_01:07 | 1473 | μου                  |
+| Mc_01:07 | 3739 | οὗ                   |
+| Mc_01:07 | 3756 | οὐκ                  |
+| Mc_01:07 | 1510 | εἰμὶ                 |
+| Mc_01:07 | 2425 | ἱκανὸς               |
+| Mc_01:07 | 2955 | κύψας                |
+| Mc_01:07 | 3089 | λῦσαι                |
+| Mc_01:07 | 3588 | τὸν                  |
+| Mc_01:07 | 2438 | ἱμάντα               |
+| Mc_01:07 | 3588 | τῶν                  |
+| Mc_01:07 | 5266 | ὑποδημάτων           |
+| Mc_01:07 |  846 | αὐτοῦ                |
+| Mc_01:08 |      |                      |
+| Mc_01:08 | 1473 | ἐγὼ                  |
+| Mc_01:08 |  907 | ἐβάπτισα             |
+| Mc_01:08 | 4771 | ὑμᾶς                 |
+| Mc_01:08 | 5204 | ὕδατι                |
+| Mc_01:08 |  846 | αὐτὸς                |
+| Mc_01:08 | 1161 | δὲ                   |
+| Mc_01:08 |  907 | βαπτίσει             |
+| Mc_01:08 | 4771 | ὑμᾶς                 |
+| Mc_01:08 | 1722 | [ἐν]                 |
+| Mc_01:08 | 4151 | πνεύματι             |
+| Mc_01:08 |   40 | ἁγίῳ                 |
+| Mc_01:08 |      |                      |
+| Mc_01:08 |      |                      |
+| Mc_01:08 |      |                      |
+| Mc_01:09 |      |                      |
+| Mc_01:09 | 2532 | ΚΑΙ                  |
+| Mc_01:09 | 1096 | ΕΓΕΝΕΤΟ              |
+| Mc_01:09 | 1722 | ἐν                   |
+| Mc_01:09 | 1565 | ἐκείναις             |
+| Mc_01:09 | 3588 | ταῖς                 |
+| Mc_01:09 | 2250 | ἡμέραις              |
+| Mc_01:09 | 2064 | ἦλθεν                |
+| Mc_01:09 | 2424 | Ἰησοῦς               |
+| Mc_01:09 |  575 | ἀπὸ                  |
+| Mc_01:09 | 3478 | Ναζαρὲτ              |
+| Mc_01:09 | 3588 | τῆς                  |
+| Mc_01:09 | 1056 | Γαλιλαίας            |
+| Mc_01:09 | 2532 | καὶ                  |
+| Mc_01:09 |  907 | ἐβαπτίσθη            |
+| Mc_01:09 | 1519 | εἰς                  |
+| Mc_01:09 | 3588 | τὸν                  |
+| Mc_01:09 | 2446 | Ἰορδάνην             |
+| Mc_01:09 | 5259 | ὑπὸ                  |
+| Mc_01:09 | 2491 | Ἰωάννου*             |
+| Mc_01:10 |      |                      |
+| Mc_01:10 | 2532 | καὶ                  |
+| Mc_01:10 | 2112 | εὐθὺς                |
+| Mc_01:10 |  305 | ἀναβαίνων            |
+| Mc_01:10 | 1537 | ἐκ                   |
+| Mc_01:10 | 3588 | τοῦ                  |
+| Mc_01:10 | 5204 | ὕδατος               |
+| Mc_01:10 | 3708 | εἶδεν                |
+| Mc_01:10 | 4977 | σχιζομένους          |
+| Mc_01:10 | 3588 | τοὺς                 |
+| Mc_01:10 | 3772 | οὐρανοὺς             |
+| Mc_01:10 | 2532 | καὶ                  |
+| Mc_01:10 | 3588 | τὸ                   |
+| Mc_01:10 | 4151 | πνεῦμα               |
+| Mc_01:10 | 5613 | ὡς                   |
+| Mc_01:10 | 4058 | περιστερὰν           |
+| Mc_01:10 | 2597 | καταβαῖνον           |
+| Mc_01:10 | 1519 | εἰς                  |
+| Mc_01:10 |  846 | αὐτόν                |
+| Mc_01:11 |      |                      |
+| Mc_01:11 | 2532 | καὶ                  |
+| Mc_01:11 | 5456 | φωνὴ                 |
+| Mc_01:11 | 1096 | ἐγένετο              |
+| Mc_01:11 | 1537 | ἐκ                   |
+| Mc_01:11 | 3588 | τῶν                  |
+| Mc_01:11 | 3772 | οὐρανῶν              |
+| Mc_01:11 | 4771 | Σὺ                   |
+| Mc_01:11 | 1510 | εἶ                   |
+| Mc_01:11 | 3588 | ὁ                    |
+| Mc_01:11 | 5207 | υἱός                 |
+| Mc_01:11 | 1473 | μου                  |
+| Mc_01:11 | 3588 | ὁ                    |
+| Mc_01:11 |   27 | ἀγαπητός             |
+| Mc_01:11 | 1722 | ἐν                   |
+| Mc_01:11 | 4771 | σοὶ                  |
+| Mc_01:11 | 2106 | εὐδόκησα             |
+| Mc_01:11 |      |                      |
+| Mc_01:11 |      |                      |
+| Mc_01:11 |      |                      |
+| Mc_01:12 |      |                      |
+| Mc_01:12 | 2532 | Καὶ                  |
+| Mc_01:12 | 2112 | εὐθὺς                |
+| Mc_01:12 | 3588 | τὸ                   |
+| Mc_01:12 | 4151 | πνεῦμα               |
+| Mc_01:12 |  846 | αὐτὸν                |
+| Mc_01:12 | 1544 | ἐκβάλλει             |
+| Mc_01:12 | 1519 | εἰς                  |
+| Mc_01:12 | 3588 | τὴν                  |
+| Mc_01:12 | 2048 | ἔρημον               |
+| Mc_01:13 |      |                      |
+| Mc_01:13 | 2532 | καὶ                  |
+| Mc_01:13 | 1510 | ἦν                   |
+| Mc_01:13 | 1722 | ἐν                   |
+| Mc_01:13 | 3588 | τῇ                   |
+| Mc_01:13 | 2048 | ἐρήμῳ                |
+| Mc_01:13 | 5062 | τεσσεράκοντα         |
+| Mc_01:13 | 2250 | ἡμέρας               |
+| Mc_01:13 | 3985 | πειραζόμενος         |
+| Mc_01:13 | 5259 | ὑπὸ                  |
+| Mc_01:13 | 3588 | τοῦ                  |
+| Mc_01:13 | 4567 | Σατανᾶ               |
+| Mc_01:13 | 2532 | καὶ                  |
+| Mc_01:13 | 1510 | ἦν                   |
+| Mc_01:13 | 3326 | μετὰ                 |
+| Mc_01:13 | 3588 | τῶν                  |
+| Mc_01:13 | 2342 | θηρίων               |
+| Mc_01:13 | 2532 | καὶ                  |
+| Mc_01:13 | 3588 | οἱ                   |
+| Mc_01:13 |   32 | ἄγγελοι              |
+| Mc_01:13 | 1247 | διηκόνουν            |
+| Mc_01:13 |  846 | αὐτῷ                 |
+| Mc_01:13 |      |                      |
+| Mc_01:13 |      |                      |
+| Mc_01:14 |      |                      |
+| Mc_01:14 | 2532 | (Καὶ)                |
+| Mc_01:14 |      |                      |
+| Mc_01:14 | 3326 | μετὰ                 |
+| Mc_01:14 | 1161 | [δὲ]                 |
+| Mc_01:14 | 3588 | τὸ                   |
+| Mc_01:14 | 3860 | παραδοθῆναι          |
+| Mc_01:14 | 3588 | τὸν                  |
+| Mc_01:14 | 2491 | Ἰωάννην*             |
+| Mc_01:14 | 2064 | ἦλθεν                |
+| Mc_01:14 | 3588 | ὁ                    |
+| Mc_01:14 | 2424 | Ἰησοῦς               |
+| Mc_01:14 | 1519 | εἰς                  |
+| Mc_01:14 | 3588 | τὴν                  |
+| Mc_01:14 | 1056 | Γαλιλαίαν            |
+| Mc_01:14 | 2784 | κηρύσσων             |
+| Mc_01:14 | 3588 | τὸ                   |
+| Mc_01:14 | 2098 | εὐαγγέλιον           |
+| Mc_01:14 | 3588 | τοῦ                  |
+| Mc_01:14 | 2316 | θεοῦ                 |
+| Mc_01:15 |      |                      |
+| Mc_01:15 | 2532 | καὶ                  |
+| Mc_01:15 | 3004 | λέγων                |
+| Mc_01:15 | 3754 | ὅτι                  |
+| Mc_01:15 | 4137 | Πεπλήρωται           |
+| Mc_01:15 | 3588 | ὁ                    |
+| Mc_01:15 | 2540 | καιρὸς               |
+| Mc_01:15 | 2532 | καὶ                  |
+| Mc_01:15 | 1448 | ἤγγικεν              |
+| Mc_01:15 | 3588 | ἡ                    |
+| Mc_01:15 |  932 | βασιλεία             |
+| Mc_01:15 | 3588 | τοῦ                  |
+| Mc_01:15 | 2316 | θεοῦ                 |
+| Mc_01:15 | 3340 | μετανοεῖτε           |
+| Mc_01:15 | 2532 | καὶ                  |
+| Mc_01:15 | 4100 | πιστεύετε            |
+| Mc_01:15 | 1722 | ἐν                   |
+| Mc_01:15 | 3588 | τῷ                   |
+| Mc_01:15 | 2098 | εὐαγγελίῳ            |
+| Mc_01:15 |      |                      |
+| Mc_01:15 |      |                      |
+| Mc_01:15 |      |                      |
+| Mc_01:16 |      |                      |
+| Mc_01:16 | 2532 | Καὶ                  |
+| Mc_01:16 | 3855 | παράγων              |
+| Mc_01:16 | 3844 | παρὰ                 |
+| Mc_01:16 | 3588 | τὴν                  |
+| Mc_01:16 | 2281 | θάλασσαν             |
+| Mc_01:16 | 3588 | τῆς                  |
+| Mc_01:16 | 1056 | Γαλιλαίας            |
+| Mc_01:16 | 3708 | εἶδεν                |
+| Mc_01:16 | 4613 | Σίμωνα               |
+| Mc_01:16 | 2532 | καὶ                  |
+| Mc_01:16 |  406 | Ἀνδρέαν              |
+| Mc_01:16 | 3588 | τὸν                  |
+| Mc_01:16 |   80 | ἀδελφὸν              |
+| Mc_01:16 | 4613 | Σίμωνος              |
+| Mc_01:16 |  906 | ἀμφιβάλλοντας        |
+| Mc_01:16 | 1722 | ἐν                   |
+| Mc_01:16 | 3588 | τῇ                   |
+| Mc_01:16 | 2281 | θαλάσσῃ              |
+| Mc_01:16 | 1510 | ἦσαν                 |
+| Mc_01:16 | 1063 | γὰρ                  |
+| Mc_01:16 |  231 | ἁλιεῖς*              |
+| Mc_01:17 |      |                      |
+| Mc_01:17 | 2532 | καὶ                  |
+| Mc_01:17 | 3004 | εἶπεν                |
+| Mc_01:17 |  846 | αὐτοῖς               |
+| Mc_01:17 | 3588 | ὁ                    |
+| Mc_01:17 | 2424 | Ἰησοῦς               |
+| Mc_01:17 | 1205 | Δεῦτε                |
+| Mc_01:17 | 3694 | ὀπίσω                |
+| Mc_01:17 | 1473 | μου                  |
+| Mc_01:17 | 2532 | καὶ                  |
+| Mc_01:17 | 4160 | ποιήσω               |
+| Mc_01:17 | 4771 | ὑμᾶς                 |
+| Mc_01:17 | 1096 | γενέσθαι             |
+| Mc_01:17 |  231 | ἁλιεῖς*              |
+| Mc_01:17 |  444 | ἀνθρώπων             |
+| Mc_01:18 |      |                      |
+| Mc_01:18 | 2532 | καὶ                  |
+| Mc_01:18 | 2112 | εὐθὺς                |
+| Mc_01:18 |  863 | ἀφέντες              |
+| Mc_01:18 | 3588 | τὰ                   |
+| Mc_01:18 | 1350 | δίκτυα               |
+| Mc_01:18 |  190 | ἠκολούθησαν          |
+| Mc_01:18 |  846 | αὐτῷ                 |
+| Mc_01:19 |      |                      |
+| Mc_01:19 | 2532 | Καὶ                  |
+| Mc_01:19 | 4260 | προβὰς               |
+| Mc_01:19 | 3641 | ὀλίγον               |
+| Mc_01:19 | 3708 | εἶδεν                |
+| Mc_01:19 | 2385 | Ἰάκωβον              |
+| Mc_01:19 | 3588 | τὸν                  |
+| Mc_01:19 | 3588 | τοῦ                  |
+| Mc_01:19 | 2199 | Ζεβεδαίου            |
+| Mc_01:19 | 2532 | καὶ                  |
+| Mc_01:19 | 2491 | Ἰωάννην*             |
+| Mc_01:19 | 3588 | τὸν                  |
+| Mc_01:19 |   80 | ἀδελφὸν              |
+| Mc_01:19 |  846 | αὐτοῦ                |
+| Mc_01:19 | 2532 | καὶ                  |
+| Mc_01:19 |  846 | αὐτοὺς               |
+| Mc_01:19 | 1722 | ἐν                   |
+| Mc_01:19 | 3588 | τῷ                   |
+| Mc_01:19 | 4143 | πλοίῳ                |
+| Mc_01:19 | 2675 | καταρτίζοντας        |
+| Mc_01:19 | 3588 | τὰ                   |
+| Mc_01:19 | 1350 | δίκτυα               |
+| Mc_01:20 |      |                      |
+| Mc_01:20 | 2532 | καὶ                  |
+| Mc_01:20 | 2112 | εὐθὺς                |
+| Mc_01:20 | 2564 | ἐκάλεσεν             |
+| Mc_01:20 |  846 | αὐτούς               |
+| Mc_01:20 | 2532 | καὶ                  |
+| Mc_01:20 |  863 | ἀφέντες              |
+| Mc_01:20 | 3588 | τὸν                  |
+| Mc_01:20 | 3962 | πατέρα               |
+| Mc_01:20 |  846 | αὐτῶν                |
+| Mc_01:20 | 2199 | Ζεβεδαῖον            |
+| Mc_01:20 | 1722 | ἐν                   |
+| Mc_01:20 | 3588 | τῷ                   |
+| Mc_01:20 | 4143 | πλοίῳ                |
+| Mc_01:20 | 3326 | μετὰ                 |
+| Mc_01:20 | 3588 | τῶν                  |
+| Mc_01:20 | 3411 | μισθωτῶν             |
+| Mc_01:20 |  565 | ἀπῆλθον              |
+| Mc_01:20 | 3694 | ὀπίσω                |
+| Mc_01:20 |  846 | αὐτοῦ                |
+| Mc_01:20 |      |                      |
+| Mc_01:20 |      |                      |
+| Mc_01:21 |      |                      |
+| Mc_01:21 | 2532 | Καὶ                  |
+| Mc_01:21 | 1531 | εἰσπορεύονται        |
+| Mc_01:21 | 1519 | εἰς                  |
+| Mc_01:21 | 2584 | Καφαρναούμ           |
+| Mc_01:21 | 2532 | Καὶ                  |
+| Mc_01:21 | 2112 | εὐθὺς                |
+| Mc_01:21 | 3588 | τοῖς                 |
+| Mc_01:21 | 4521 | σάββασιν             |
+| Mc_01:21 | 1525 | εἰσελθὼν             |
+| Mc_01:21 | 1519 | εἰς                  |
+| Mc_01:21 | 3588 | τὴν                  |
+| Mc_01:21 | 4864 | συναγωγὴν            |
+| Mc_01:21 | 1321 | ἐδίδασκεν            |
+| Mc_01:22 |      |                      |
+| Mc_01:22 | 2532 | καὶ                  |
+| Mc_01:22 | 1605 | ἐξεπλήσσοντο         |
+| Mc_01:22 | 1909 | ἐπὶ                  |
+| Mc_01:22 | 3588 | τῇ                   |
+| Mc_01:22 | 1322 | διδαχῇ               |
+| Mc_01:22 |  846 | αὐτοῦ                |
+| Mc_01:22 | 1510 | ἦν                   |
+| Mc_01:22 | 1063 | γὰρ                  |
+| Mc_01:22 | 1321 | διδάσκων             |
+| Mc_01:22 |  846 | αὐτοὺς               |
+| Mc_01:22 | 5613 | ὡς                   |
+| Mc_01:22 | 1849 | ἐξουσίαν             |
+| Mc_01:22 | 2192 | ἔχων                 |
+| Mc_01:22 | 2532 | καὶ                  |
+| Mc_01:22 | 3756 | οὐχ                  |
+| Mc_01:22 | 5613 | ὡς                   |
+| Mc_01:22 | 3588 | οἱ                   |
+| Mc_01:22 | 1122 | γραμματεῖς           |
+| Mc_01:22 |      |                      |
+| Mc_01:22 |      |                      |
+| Mc_01:23 |      |                      |
+| Mc_01:23 | 2532 | καὶ                  |
+| Mc_01:23 | 2112 | εὐθὺς                |
+| Mc_01:23 | 1510 | ἦν                   |
+| Mc_01:23 | 1722 | ἐν                   |
+| Mc_01:23 | 3588 | τῇ                   |
+| Mc_01:23 | 4864 | συναγωγῇ             |
+| Mc_01:23 |  846 | αὐτῶν                |
+| Mc_01:23 |  444 | ἄνθρωπος             |
+| Mc_01:23 | 1722 | ἐν                   |
+| Mc_01:23 | 4151 | πνεύματι             |
+| Mc_01:23 |  169 | ἀκαθάρτῳ             |
+| Mc_01:23 | 2532 | καὶ                  |
+| Mc_01:23 |  349 | ἀνέκραξεν            |
+| Mc_01:24 |      |                      |
+| Mc_01:24 | 3004 | λέγων                |
+| Mc_01:24 | 5101 | Τί                   |
+| Mc_01:24 | 1473 | ἡμῖν                 |
+| Mc_01:24 | 2532 | καὶ                  |
+| Mc_01:24 | 4771 | σοί                  |
+| Mc_01:24 | 2424 | Ἰησοῦ                |
+| Mc_01:24 | 3479 | Ναζαρηνέ             |
+| Mc_01:24 | 2064 | ἦλθες                |
+| Mc_01:24 |  622 | ἀπολέσαι             |
+| Mc_01:24 | 1473 | ἡμᾶς                 |
+| Mc_01:24 | 1492 | οἶδά                 |
+| Mc_01:24 | 4771 | σε                   |
+| Mc_01:24 | 5101 | τίς                  |
+| Mc_01:24 | 1510 | εἶ                   |
+| Mc_01:24 | 3588 | ὁ                    |
+| Mc_01:24 |   40 | ἅγιος                |
+| Mc_01:24 | 3588 | τοῦ                  |
+| Mc_01:24 | 2316 | θεοῦ                 |
+| Mc_01:25 |      |                      |
+| Mc_01:25 | 2532 | καὶ                  |
+| Mc_01:25 | 2008 | ἐπετίμησεν           |
+| Mc_01:25 |  846 | αὐτῷ                 |
+| Mc_01:25 | 3588 | ὁ                    |
+| Mc_01:25 | 2424 | Ἰησοῦς               |
+| Mc_01:25 | 3004 | λέγων                |
+| Mc_01:25 | 5392 | Φιμώθητι             |
+| Mc_01:25 | 2532 | καὶ                  |
+| Mc_01:25 | 1831 | ἔξελθε               |
+| Mc_01:25 | 1537 | ἐξ                   |
+| Mc_01:25 |  846 | αὐτοῦ                |
+| Mc_01:26 |      |                      |
+| Mc_01:26 | 2532 | καὶ                  |
+| Mc_01:26 | 4682 | σπαράξαν             |
+| Mc_01:26 |  846 | αὐτὸν                |
+| Mc_01:26 | 3588 | τὸ                   |
+| Mc_01:26 | 4151 | πνεῦμα               |
+| Mc_01:26 | 3588 | τὸ                   |
+| Mc_01:26 |  169 | ἀκάθαρτον            |
+| Mc_01:26 | 2532 | καὶ                  |
+| Mc_01:26 | 5455 | φωνῆσαν              |
+| Mc_01:26 | 5456 | φωνῇ                 |
+| Mc_01:26 | 3173 | μεγάλῃ               |
+| Mc_01:26 | 1831 | ἐξῆλθεν              |
+| Mc_01:26 | 1537 | ἐξ                   |
+| Mc_01:26 |  846 | αὐτοῦ                |
+| Mc_01:26 |      |                      |
+| Mc_01:26 |      |                      |
+| Mc_01:27 |      |                      |
+| Mc_01:27 | 2532 | καὶ                  |
+| Mc_01:27 | 2284 | ἐθαμβήθησαν          |
+| Mc_01:27 |  537 | ἅπαντες              |
+| Mc_01:27 | 5620 | ὥστε                 |
+| Mc_01:27 | 4802 | συζητεῖν*            |
+| Mc_01:27 | 4314 | [πρὸς]               |
+| Mc_01:27 | 1438 | ἑαυτοὺς*             |
+| Mc_01:27 | 3004 | λέγοντας             |
+| Mc_01:27 | 5101 | Τί                   |
+| Mc_01:27 | 1510 | ἐστιν                |
+| Mc_01:27 | 3778 | τοῦτο                |
+| Mc_01:27 | 1322 | διδαχὴ               |
+| Mc_01:27 | 2537 | καινή                |
+| Mc_01:27 | 2596 | κατ'                 |
+| Mc_01:27 | 1849 | ἐξουσίαν             |
+| Mc_01:27 | 2532 | καὶ                  |
+| Mc_01:27 | 3588 | τοῖς                 |
+| Mc_01:27 | 4151 | πνεύμασι             |
+| Mc_01:27 | 3588 | τοῖς                 |
+| Mc_01:27 |  169 | ἀκαθάρτοις           |
+| Mc_01:27 | 2004 | ἐπιτάσσει            |
+| Mc_01:27 | 2532 | καὶ                  |
+| Mc_01:27 | 5219 | ὑπακούουσιν          |
+| Mc_01:27 |  846 | αὐτῷ                 |
+| Mc_01:28 |      |                      |
+| Mc_01:28 | 2532 | Καὶ                  |
+| Mc_01:28 | 1831 | ἐξῆλθεν              |
+| Mc_01:28 | 3588 | ἡ                    |
+| Mc_01:28 |  189 | ἀκοὴ                 |
+| Mc_01:28 |  846 | αὐτοῦ                |
+| Mc_01:28 | 2112 | εὐθὺς                |
+| Mc_01:28 | 3837 | πανταχοῦ             |
+| Mc_01:28 | 1519 | εἰς                  |
+| Mc_01:28 | 3650 | ὅλην                 |
+| Mc_01:28 | 3588 | τὴν                  |
+| Mc_01:28 | 4066 | περίχωρον            |
+| Mc_01:28 | 3588 | τῆς                  |
+| Mc_01:28 | 1056 | Γαλιλαίας            |
+| Mc_01:28 |      |                      |
+| Mc_01:28 |      |                      |
+| Mc_01:29 |      |                      |
+| Mc_01:29 | 2532 | Καὶ                  |
+| Mc_01:29 | 2112 | εὐθὺς                |
+| Mc_01:29 | 1537 | ἐκ                   |
+| Mc_01:29 | 3588 | τῆς                  |
+| Mc_01:29 | 4864 | συναγωγῆς            |
+| Mc_01:29 | 1831 | ἐξελθόντες           |
+| Mc_01:29 | 2064 | ἦλθον*               |
+| Mc_01:29 | 1519 | εἰς                  |
+| Mc_01:29 | 3588 | τὴν                  |
+| Mc_01:29 | 3614 | οἰκίαν               |
+| Mc_01:29 | 4613 | Σίμωνος              |
+| Mc_01:29 | 2532 | καὶ                  |
+| Mc_01:29 |  406 | Ἀνδρέου              |
+| Mc_01:29 | 3326 | μετὰ                 |
+| Mc_01:29 | 2385 | Ἰακώβου              |
+| Mc_01:29 | 2532 | καὶ                  |
+| Mc_01:29 | 2491 | Ἰωάννου*             |
+| Mc_01:30 |      |                      |
+| Mc_01:30 | 3588 | ἡ                    |
+| Mc_01:30 | 1161 | δὲ                   |
+| Mc_01:30 | 3994 | πενθερὰ              |
+| Mc_01:30 | 4613 | Σίμωνος              |
+| Mc_01:30 | 2621 | κατέκειτο            |
+| Mc_01:30 | 4445 | πυρέσσουσα           |
+| Mc_01:30 | 2532 | καὶ                  |
+| Mc_01:30 | 2112 | εὐθὺς                |
+| Mc_01:30 | 3004 | λέγουσιν             |
+| Mc_01:30 |  846 | αὐτῷ                 |
+| Mc_01:30 | 4012 | περὶ                 |
+| Mc_01:30 |  846 | αὐτῆς                |
+| Mc_01:31 |      |                      |
+| Mc_01:31 | 2532 | καὶ                  |
+| Mc_01:31 | 4334 | προσελθὼν            |
+| Mc_01:31 | 1453 | ἤγειρεν              |
+| Mc_01:31 |  846 | αὐτὴν                |
+| Mc_01:31 | 2902 | κρατήσας             |
+| Mc_01:31 | 3588 | τῆς                  |
+| Mc_01:31 | 5495 | χειρός               |
+| Mc_01:31 | 2532 | καὶ                  |
+| Mc_01:31 |  863 | ἀφῆκεν               |
+| Mc_01:31 |  846 | αὐτὴν                |
+| Mc_01:31 | 3588 | ὁ                    |
+| Mc_01:31 | 4446 | πυρετός              |
+| Mc_01:31 | 2532 | καὶ                  |
+| Mc_01:31 | 1247 | διηκόνει             |
+| Mc_01:31 |  846 | αὐτοῖς               |
+| Mc_01:31 |      |                      |
+| Mc_01:31 |      |                      |
+| Mc_01:31 |      |                      |
+| Mc_01:32 |      |                      |
+| Mc_01:32 | 3798 | Ὀψίας                |
+| Mc_01:32 | 1161 | δὲ                   |
+| Mc_01:32 | 1096 | γενομένης            |
+| Mc_01:32 | 3753 | ὅτε                  |
+| Mc_01:32 | 1416 | ἔδυ**                |
+| Mc_01:32 | 3588 | ὁ                    |
+| Mc_01:32 | 2246 | ἥλιος                |
+| Mc_01:32 | 5342 | ἔφερον               |
+| Mc_01:32 | 4314 | πρὸς                 |
+| Mc_01:32 |  846 | αὐτὸν                |
+| Mc_01:32 | 3956 | πάντας               |
+| Mc_01:32 | 3588 | τοὺς                 |
+| Mc_01:32 | 2560 | κακῶς                |
+| Mc_01:32 | 2192 | ἔχοντας              |
+| Mc_01:32 | 2532 | καὶ                  |
+| Mc_01:32 | 3588 | τοὺς                 |
+| Mc_01:32 | 1139 | δαιμονιζομένους      |
+| Mc_01:33 |      |                      |
+| Mc_01:33 | 2532 | καὶ                  |
+| Mc_01:33 | 1510 | ἦν                   |
+| Mc_01:33 | 3650 | ὅλη                  |
+| Mc_01:33 | 3588 | ἡ                    |
+| Mc_01:33 | 4172 | πόλις                |
+| Mc_01:33 | 1996 | ἐπισυνηγμένη         |
+| Mc_01:33 | 4314 | πρὸς                 |
+| Mc_01:33 | 3588 | τὴν                  |
+| Mc_01:33 | 2374 | θύραν                |
+| Mc_01:34 |      |                      |
+| Mc_01:34 | 2532 | καὶ                  |
+| Mc_01:34 | 2323 | ἐθεράπευσεν          |
+| Mc_01:34 | 4183 | πολλοὺς              |
+| Mc_01:34 | 2560 | κακῶς                |
+| Mc_01:34 | 2192 | ἔχοντας              |
+| Mc_01:34 | 4164 | ποικίλαις            |
+| Mc_01:34 | 3554 | νόσοις               |
+| Mc_01:34 | 2532 | καὶ                  |
+| Mc_01:34 | 1140 | δαιμόνια             |
+| Mc_01:34 | 4183 | πολλὰ                |
+| Mc_01:34 | 1544 | ἐξέβαλεν             |
+| Mc_01:34 | 2532 | καὶ                  |
+| Mc_01:34 | 3756 | οὐκ                  |
+| Mc_01:34 |  863 | ἤφιεν                |
+| Mc_01:34 | 2980 | λαλεῖν               |
+| Mc_01:34 | 3588 | τὰ                   |
+| Mc_01:34 | 1140 | δαιμόνια             |
+| Mc_01:34 | 3754 | ὅτι                  |
+| Mc_01:34 | 1492 | ᾔδεισαν              |
+| Mc_01:34 |  846 | αὐτὸν                |
+| Mc_01:34 | 5547 | (Χριστὸν             |
+| Mc_01:34 | 1510 | εἶναι)               |
+| Mc_01:35 |      |                      |
+| Mc_01:35 | 2532 | Καὶ                  |
+| Mc_01:35 | 4404 | πρωὶ                 |
+| Mc_01:35 | 1773 | ἔννυχα               |
+| Mc_01:35 | 3029 | λίαν                 |
+| Mc_01:35 |  450 | ἀναστὰς              |
+| Mc_01:35 | 1831 | ἐξῆλθεν              |
+| Mc_01:35 | 2532 | καὶ                  |
+| Mc_01:35 |  565 | ἀπῆλθεν              |
+| Mc_01:35 | 1519 | εἰς                  |
+| Mc_01:35 | 2048 | ἔρημον               |
+| Mc_01:35 | 5117 | τόπον                |
+| Mc_01:35 | 2546 | κἀκεῖ                |
+| Mc_01:35 | 4336 | προσηύχετο           |
+| Mc_01:36 |      |                      |
+| Mc_01:36 | 2532 | καὶ                  |
+| Mc_01:36 | 2614 | κατεδίωξεν           |
+| Mc_01:36 |  846 | αὐτὸν                |
+| Mc_01:36 | 4613 | Σίμων                |
+| Mc_01:36 | 2532 | καὶ                  |
+| Mc_01:36 | 3588 | οἱ                   |
+| Mc_01:36 | 3326 | μετ'                 |
+| Mc_01:36 |  846 | αὐτοῦ                |
+| Mc_01:37 |      |                      |
+| Mc_01:37 | 2532 | καὶ                  |
+| Mc_01:37 | 2147 | εὗρον                |
+| Mc_01:37 |  846 | αὐτὸν                |
+| Mc_01:37 | 2532 | καὶ                  |
+| Mc_01:37 | 3004 | λέγουσιν             |
+| Mc_01:37 |  846 | αὐτῷ                 |
+| Mc_01:37 | 3754 | ὅτι                  |
+| Mc_01:37 | 3956 | Πάντες               |
+| Mc_01:37 | 2212 | ζητοῦσίν             |
+| Mc_01:37 | 4771 | σε                   |
+| Mc_01:37 |      |                      |
+| Mc_01:37 |      |                      |
+| Mc_01:38 |      |                      |
+| Mc_01:38 | 2532 | καὶ                  |
+| Mc_01:38 | 3004 | λέγει                |
+| Mc_01:38 |  846 | αὐτοῖς               |
+| Mc_01:38 |   71 | Ἄγωμεν               |
+| Mc_01:38 |  237 | ἀλλαχοῦ              |
+| Mc_01:38 | 1519 | εἰς                  |
+| Mc_01:38 | 3588 | τὰς                  |
+| Mc_01:38 | 2192 | ἐχομένας             |
+| Mc_01:38 | 2969 | κωμοπόλεις           |
+| Mc_01:38 | 2443 | ἵνα                  |
+| Mc_01:38 | 2532 | καὶ                  |
+| Mc_01:38 | 1563 | ἐκεῖ                 |
+| Mc_01:38 | 2784 | κηρύξω               |
+| Mc_01:38 | 1519 | εἰς                  |
+| Mc_01:38 | 3778 | τοῦτο                |
+| Mc_01:38 | 1063 | γὰρ                  |
+| Mc_01:38 | 1831 | ἐξῆλθον              |
+| Mc_01:39 |      |                      |
+| Mc_01:39 | 2532 | καὶ                  |
+| Mc_01:39 | 2064 | ἦλθεν                |
+| Mc_01:39 | 2784 | κηρύσσων             |
+| Mc_01:39 | 1519 | εἰς                  |
+| Mc_01:39 | 3588 | τὰς                  |
+| Mc_01:39 | 4864 | συναγωγὰς            |
+| Mc_01:39 |  846 | αὐτῶν                |
+| Mc_01:39 | 1519 | εἰς                  |
+| Mc_01:39 | 3650 | ὅλην                 |
+| Mc_01:39 | 3588 | τὴν                  |
+| Mc_01:39 | 1056 | Γαλιλαίαν            |
+| Mc_01:39 | 2532 | καὶ                  |
+| Mc_01:39 | 3588 | τὰ                   |
+| Mc_01:39 | 1140 | δαιμόνια             |
+| Mc_01:39 | 1544 | ἐκβάλλων             |
+| Mc_01:39 |      |                      |
+| Mc_01:39 |      |                      |
+| Mc_01:40 |      |                      |
+| Mc_01:40 | 2532 | Καὶ                  |
+| Mc_01:40 | 2064 | ἔρχεται              |
+| Mc_01:40 | 4314 | πρὸς                 |
+| Mc_01:40 |  846 | αὐτὸν                |
+| Mc_01:40 | 3015 | λεπρὸς               |
+| Mc_01:40 | 3870 | παρακαλῶν            |
+| Mc_01:40 |  846 | αὐτὸν                |
+| Mc_01:40 | 2532 | καὶ                  |
+| Mc_01:40 | 1120 | γονυπετῶν            |
+| Mc_01:40 | 2532 | [καὶ]                |
+| Mc_01:40 | 3004 | λέγων                |
+| Mc_01:40 |  846 | αὐτῷ                 |
+| Mc_01:40 | 3754 | ὅτι                  |
+| Mc_01:40 | 1437 | Ἐὰν                  |
+| Mc_01:40 | 2309 | θέλῃς                |
+| Mc_01:40 | 1410 | δύνασαί              |
+| Mc_01:40 | 1473 | με                   |
+| Mc_01:40 | 2511 | καθαρίσαι            |
+| Mc_01:41 |      |                      |
+| Mc_01:41 | 2532 | καὶ                  |
+| Mc_01:41 | 4697 | σπλαγχνισθεὶς        |
+| Mc_01:41 | 1614 | ἐκτείνας             |
+| Mc_01:41 | 3588 | τὴν                  |
+| Mc_01:41 | 5495 | χεῖρα                |
+| Mc_01:41 |  846 | αὐτοῦ                |
+| Mc_01:41 |  680 | ἥψατο                |
+| Mc_01:41 | 2532 | καὶ                  |
+| Mc_01:41 | 3004 | λέγει                |
+| Mc_01:41 |  846 | αὐτῷ                 |
+| Mc_01:41 | 2309 | Θέλω                 |
+| Mc_01:41 | 2511 | καθαρίσθητι          |
+| Mc_01:42 |      |                      |
+| Mc_01:42 | 2532 | καὶ                  |
+| Mc_01:42 | 2112 | εὐθὺς                |
+| Mc_01:42 |  565 | ἀπῆλθεν              |
+| Mc_01:42 |  575 | ἀπ'                  |
+| Mc_01:42 |  846 | αὐτοῦ                |
+| Mc_01:42 | 3588 | ἡ                    |
+| Mc_01:42 | 3014 | λέπρα                |
+| Mc_01:42 | 2532 | καὶ                  |
+| Mc_01:42 | 2511 | ἐκαθαρίσθη*          |
+| Mc_01:43 |      |                      |
+| Mc_01:43 | 2532 | καὶ                  |
+| Mc_01:43 | 1690 | ἐμβριμησάμενος       |
+| Mc_01:43 |  846 | αὐτῷ                 |
+| Mc_01:43 | 2112 | εὐθὺς                |
+| Mc_01:43 | 1544 | ἐξέβαλεν             |
+| Mc_01:43 |  846 | αὐτόν                |
+| Mc_01:44 |      |                      |
+| Mc_01:44 | 2532 | καὶ                  |
+| Mc_01:44 | 3004 | λέγει                |
+| Mc_01:44 |  846 | αὐτῷ                 |
+| Mc_01:44 | 3708 | Ὅρα                  |
+| Mc_01:44 | 3367 | μηδενὶ               |
+| Mc_01:44 | 3367 | μηδὲν                |
+| Mc_01:44 | 3004 | εἴπῃς                |
+| Mc_01:44 |  235 | ἀλλὰ                 |
+| Mc_01:44 | 5217 | ὕπαγε                |
+| Mc_01:44 | 4572 | σεαυτὸν              |
+| Mc_01:44 | 1166 | δεῖξον               |
+| Mc_01:44 | 3588 | τῷ                   |
+| Mc_01:44 | 2409 | ἱερεῖ                |
+| Mc_01:44 | 2532 | καὶ                  |
+| Mc_01:44 | 4374 | προσένεγκε           |
+| Mc_01:44 | 4012 | περὶ                 |
+| Mc_01:44 | 3588 | τοῦ                  |
+| Mc_01:44 | 2512 | καθαρισμοῦ           |
+| Mc_01:44 | 4771 | σου                  |
+| Mc_01:44 | 3739 | ἃ                    |
+| Mc_01:44 | 4367 | προσέταξεν           |
+| Mc_01:44 | 3475 | Μωυσῆς               |
+| Mc_01:44 | 1519 | εἰς                  |
+| Mc_01:44 | 3142 | μαρτύριον            |
+| Mc_01:44 |  846 | αὐτοῖς               |
+| Mc_01:45 |      |                      |
+| Mc_01:45 | 3588 | ὁ                    |
+| Mc_01:45 | 1161 | δὲ                   |
+| Mc_01:45 | 1831 | ἐξελθὼν              |
+| Mc_01:45 |  756 | ἤρξατο               |
+| Mc_01:45 | 2784 | κηρύσσειν            |
+| Mc_01:45 | 4183 | πολλὰ                |
+| Mc_01:45 | 2532 | καὶ                  |
+| Mc_01:45 | 1310 | διαφημίζειν          |
+| Mc_01:45 | 3588 | τὸν                  |
+| Mc_01:45 | 3056 | λόγον                |
+| Mc_01:45 | 5620 | ὥστε                 |
+| Mc_01:45 | 3371 | μηκέτι               |
+| Mc_01:45 |  846 | αὐτὸν                |
+| Mc_01:45 | 1410 | δύνασθαι             |
+| Mc_01:45 | 5320 | φανερῶς              |
+| Mc_01:45 | 1519 | εἰς                  |
+| Mc_01:45 | 4172 | πόλιν                |
+| Mc_01:45 | 1525 | εἰσελθεῖν            |
+| Mc_01:45 |  235 | ἀλλ'*                |
+| Mc_01:45 | 1854 | ἔξω                  |
+| Mc_01:45 | 1909 | ἐπ'                  |
+| Mc_01:45 | 2048 | ἐρήμοις              |
+| Mc_01:45 | 5117 | τόποις               |
+| Mc_01:45 | 1510 | ἦν                   |
+| Mc_01:45 | 2532 | καὶ                  |
+| Mc_01:45 | 2064 | ἤρχοντο              |
+| Mc_01:45 | 4314 | πρὸς                 |
+| Mc_01:45 |  846 | αὐτὸν                |
+| Mc_01:45 | 3840 | πάντοθεν             |
+| Mc_02    |      |                      |
+|          |      |                      |
+|          |      |                      |
+|          |      |                      |
+| Mc_02:01 |      |                      |
+| Mc_02:01 | 2532 | Καὶ                  |
+| Mc_02:01 | 1525 | εἰσελθὼν             |
+| Mc_02:01 | 3825 | πάλιν                |
+| Mc_02:01 | 1519 | εἰς                  |
+| Mc_02:01 | 2584 | Καφαρναοὺμ           |
+| Mc_02:01 | 1223 | δι'                  |
+| Mc_02:01 | 2250 | ἡμερῶν               |
+| Mc_02:01 |  191 | ἠκούσθη              |
+| Mc_02:01 | 3754 | ὅτι                  |
+| Mc_02:01 | 1722 | ἐν                   |
+| Mc_02:01 | 3624 | οἴκῳ                 |
+| Mc_02:01 | 1510 | ἐστίν                |
+| Mc_02:02 |      |                      |
+| Mc_02:02 | 2532 | καὶ                  |
+| Mc_02:02 | 4863 | συνήχθησαν           |
+| Mc_02:02 | 4183 | πολλοὶ               |
+| Mc_02:02 | 5620 | ὥστε                 |
+| Mc_02:02 | 3371 | μηκέτι               |
+| Mc_02:02 | 5562 | χωρεῖν               |
+| Mc_02:02 | 3366 | μηδὲ                 |
+| Mc_02:02 | 3588 | τὰ                   |
+| Mc_02:02 | 4314 | πρὸς                 |
+| Mc_02:02 | 3588 | τὴν                  |
+| Mc_02:02 | 2374 | θύραν                |
+| Mc_02:02 | 2532 | καὶ                  |
+| Mc_02:02 | 2980 | ἐλάλει               |
+| Mc_02:02 |  846 | αὐτοῖς               |
+| Mc_02:02 | 3588 | τὸν                  |
+| Mc_02:02 | 3056 | λόγον                |
+| Mc_02:02 |      |                      |
+| Mc_02:02 |      |                      |
+| Mc_02:03 |      |                      |
+| Mc_02:03 | 2532 | καὶ                  |
+| Mc_02:03 | 2064 | ἔρχονται             |
+| Mc_02:03 | 5342 | φέροντες             |
+| Mc_02:03 | 4314 | πρὸς                 |
+| Mc_02:03 |  846 | αὐτὸν                |
+| Mc_02:03 | 3885 | παραλυτικὸν          |
+| Mc_02:03 |  142 | αἰρόμενον            |
+| Mc_02:03 | 5259 | ὑπὸ                  |
+| Mc_02:03 | 5064 | τεσσάρων             |
+| Mc_02:04 |      |                      |
+| Mc_02:04 | 2532 | καὶ                  |
+| Mc_02:04 | 3361 | μὴ                   |
+| Mc_02:04 | 1410 | δυνάμενοι            |
+| Mc_02:04 | 4374 | προσενέγκαι          |
+| Mc_02:04 |  846 | αὐτῷ                 |
+| Mc_02:04 | 1223 | διὰ                  |
+| Mc_02:04 | 3588 | τὸν                  |
+| Mc_02:04 | 3793 | ὄχλον                |
+| Mc_02:04 |  648 | ἀπεστέγασαν          |
+| Mc_02:04 | 3588 | τὴν                  |
+| Mc_02:04 | 4721 | στέγην               |
+| Mc_02:04 | 3699 | ὅπου                 |
+| Mc_02:04 | 1510 | ἦν                   |
+| Mc_02:04 | 2532 | καὶ                  |
+| Mc_02:04 | 1846 | ἐξορύξαντες          |
+| Mc_02:04 | 5465 | χαλῶσι               |
+| Mc_02:04 | 3588 | τὸν                  |
+| Mc_02:04 | 2895 | κράβαττον            |
+| Mc_02:04 | 3699 | ὅπου                 |
+| Mc_02:04 | 3588 | ὁ                    |
+| Mc_02:04 | 3885 | παραλυτικὸς          |
+| Mc_02:04 | 2621 | κατέκειτο            |
+| Mc_02:05 |      |                      |
+| Mc_02:05 | 2532 | καὶ                  |
+| Mc_02:05 | 3708 | ἰδὼν                 |
+| Mc_02:05 | 3588 | ὁ                    |
+| Mc_02:05 | 2424 | Ἰησοῦς               |
+| Mc_02:05 | 3588 | τὴν                  |
+| Mc_02:05 | 4102 | πίστιν               |
+| Mc_02:05 |  846 | αὐτῶν                |
+| Mc_02:05 | 3004 | λέγει                |
+| Mc_02:05 | 3588 | τῷ                   |
+| Mc_02:05 | 3885 | παραλυτικῷ           |
+| Mc_02:05 | 5043 | Τέκνον               |
+| Mc_02:05 |  863 | ἀφίενταί             |
+| Mc_02:05 | 4771 | σου                  |
+| Mc_02:05 | 3588 | αἱ                   |
+| Mc_02:05 |  266 | ἁμαρτίαι             |
+| Mc_02:06 |      |                      |
+| Mc_02:06 | 1510 | ἦσαν                 |
+| Mc_02:06 | 1161 | δέ                   |
+| Mc_02:06 | 5100 | τινες                |
+| Mc_02:06 | 3588 | τῶν                  |
+| Mc_02:06 | 1122 | γραμματέων           |
+| Mc_02:06 | 1563 | ἐκεῖ                 |
+| Mc_02:06 | 2521 | καθήμενοι            |
+| Mc_02:06 | 2532 | καὶ                  |
+| Mc_02:06 | 1260 | διαλογιζόμενοι       |
+| Mc_02:06 | 1722 | ἐν                   |
+| Mc_02:06 | 3588 | ταῖς                 |
+| Mc_02:06 | 2588 | καρδίαις             |
+| Mc_02:06 |  846 | αὐτῶν                |
+| Mc_02:07 |      |                      |
+| Mc_02:07 | 5101 | Τί                   |
+| Mc_02:07 | 3778 | οὗτος                |
+| Mc_02:07 | 3779 | οὕτως*               |
+| Mc_02:07 | 2980 | λαλεῖ                |
+| Mc_02:07 |  987 | βλασφημεῖ            |
+| Mc_02:07 | 5101 | τίς                  |
+| Mc_02:07 | 1410 | δύναται              |
+| Mc_02:07 |  863 | ἀφιέναι              |
+| Mc_02:07 |  266 | ἁμαρτίας             |
+| Mc_02:07 | 1487 | εἰ                   |
+| Mc_02:07 | 3361 | μὴ                   |
+| Mc_02:07 | 1520 | εἷς                  |
+| Mc_02:07 | 3588 | ὁ                    |
+| Mc_02:07 | 2316 | θεός                 |
+| Mc_02:08 |      |                      |
+| Mc_02:08 | 2532 | καὶ                  |
+| Mc_02:08 | 2112 | εὐθὺς                |
+| Mc_02:08 | 1921 | ἐπιγνοὺς             |
+| Mc_02:08 | 3588 | ὁ                    |
+| Mc_02:08 | 2424 | Ἰησοῦς               |
+| Mc_02:08 | 3588 | τῷ                   |
+| Mc_02:08 | 4151 | πνεύματι             |
+| Mc_02:08 |  846 | αὐτοῦ                |
+| Mc_02:08 | 3754 | ὅτι                  |
+| Mc_02:08 | 3779 | οὕτως                |
+| Mc_02:08 | 1260 | διαλογίζονται        |
+| Mc_02:08 | 1722 | ἐν                   |
+| Mc_02:08 | 1438 | ἑαυτοῖς              |
+| Mc_02:08 | 3004 | λέγει                |
+| Mc_02:08 |  846 | αὐτοῖς               |
+| Mc_02:08 | 5101 | Τί                   |
+| Mc_02:08 | 3778 | ταῦτα                |
+| Mc_02:08 | 1260 | διαλογίζεσθε         |
+| Mc_02:08 | 1722 | ἐν                   |
+| Mc_02:08 | 3588 | ταῖς                 |
+| Mc_02:08 | 2588 | καρδίαις             |
+| Mc_02:08 | 4771 | ὑμῶν                 |
+| Mc_02:09 |      |                      |
+| Mc_02:09 | 5101 | τί                   |
+| Mc_02:09 | 1510 | ἐστιν                |
+| Mc_02:09 | 2123 | εὐκοπώτερον          |
+| Mc_02:09 | 3004 | εἰπεῖν               |
+| Mc_02:09 | 3588 | τῷ                   |
+| Mc_02:09 | 3885 | παραλυτικῷ           |
+| Mc_02:09 |  863 | Ἀφίενταί             |
+| Mc_02:09 | 4771 | σου                  |
+| Mc_02:09 | 3588 | αἱ                   |
+| Mc_02:09 |  266 | ἁμαρτίαι             |
+| Mc_02:09 | 2228 | ἢ                    |
+| Mc_02:09 | 3004 | εἰπεῖν               |
+| Mc_02:09 | 1453 | ἔγειρε**             |
+| Mc_02:09 | 2532 | καὶ                  |
+| Mc_02:09 |  142 | ἆρον                 |
+| Mc_02:09 | 3588 | τὸν                  |
+| Mc_02:09 | 2895 | κράβαττόν            |
+| Mc_02:09 | 4771 | σου                  |
+| Mc_02:09 | 2532 | καὶ                  |
+| Mc_02:09 | 4043 | περιπάτει            |
+| Mc_02:10 |      |                      |
+| Mc_02:10 | 2443 | ἵνα                  |
+| Mc_02:10 | 1161 | δὲ                   |
+| Mc_02:10 | 1492 | εἰδῆτε               |
+| Mc_02:10 | 3754 | ὅτι                  |
+| Mc_02:10 | 1849 | ἐξουσίαν             |
+| Mc_02:10 | 2192 | ἔχει                 |
+| Mc_02:10 | 3588 | ὁ                    |
+| Mc_02:10 | 5207 | υἱὸς                 |
+| Mc_02:10 | 3588 | τοῦ                  |
+| Mc_02:10 |  444 | ἀνθρώπου             |
+| Mc_02:10 |  863 | ἀφιέναι              |
+| Mc_02:10 |  266 | ἁμαρτίας             |
+| Mc_02:10 | 1909 | ἐπὶ                  |
+| Mc_02:10 | 3588 | τῆς                  |
+| Mc_02:10 | 1093 | γῆς                  |
+| Mc_02:10 | 3004 | λέγει                |
+| Mc_02:10 | 3588 | τῷ                   |
+| Mc_02:10 | 3885 | παραλυτικῷ           |
+| Mc_02:11 |      |                      |
+| Mc_02:11 | 4771 | Σοὶ                  |
+| Mc_02:11 | 3004 | λέγω                 |
+| Mc_02:11 | 1453 | ἔγειρε               |
+| Mc_02:11 |  142 | ἆρον                 |
+| Mc_02:11 | 3588 | τὸν                  |
+| Mc_02:11 | 2895 | κράβαττόν            |
+| Mc_02:11 | 4771 | σου                  |
+| Mc_02:11 | 2532 | καὶ                  |
+| Mc_02:11 | 5217 | ὕπαγε                |
+| Mc_02:11 | 1519 | εἰς                  |
+| Mc_02:11 | 3588 | τὸν                  |
+| Mc_02:11 | 3624 | οἶκόν                |
+| Mc_02:11 | 4771 | σου                  |
+| Mc_02:12 |      |                      |
+| Mc_02:12 | 2532 | καὶ                  |
+| Mc_02:12 | 1453 | ἠγέρθη               |
+| Mc_02:12 | 2532 | καὶ                  |
+| Mc_02:12 | 2112 | εὐθὺς                |
+| Mc_02:12 |  142 | ἄρας                 |
+| Mc_02:12 | 3588 | τὸν                  |
+| Mc_02:12 | 2895 | κράβαττον            |
+| Mc_02:12 | 1831 | ἐξῆλθεν              |
+| Mc_02:12 | 1715 | ἔμπροσθεν            |
+| Mc_02:12 | 3956 | πάντων               |
+| Mc_02:12 | 5620 | ὥστε                 |
+| Mc_02:12 | 1839 | ἐξίστασθαι           |
+| Mc_02:12 | 3956 | πάντας               |
+| Mc_02:12 | 2532 | καὶ                  |
+| Mc_02:12 | 1392 | δοξάζειν             |
+| Mc_02:12 | 3588 | τὸν                  |
+| Mc_02:12 | 2316 | θεὸν                 |
+| Mc_02:12 | 3004 | λέγοντας             |
+| Mc_02:12 | 3754 | ὅτι                  |
+| Mc_02:12 | 3779 | Οὕτως                |
+| Mc_02:12 | 3763 | οὐδέποτε             |
+| Mc_02:12 | 3708 | εἴδομεν*             |
+| Mc_02:12 |      |                      |
+| Mc_02:12 |      |                      |
+| Mc_02:12 |      |                      |
+| Mc_02:13 |      |                      |
+| Mc_02:13 | 2532 | Καὶ                  |
+| Mc_02:13 | 1831 | ἐξῆλθεν              |
+| Mc_02:13 | 3825 | πάλιν                |
+| Mc_02:13 | 3844 | παρὰ                 |
+| Mc_02:13 | 3588 | τὴν                  |
+| Mc_02:13 | 2281 | θάλασσαν             |
+| Mc_02:13 | 2532 | καὶ                  |
+| Mc_02:13 | 3956 | πᾶς                  |
+| Mc_02:13 | 3588 | ὁ                    |
+| Mc_02:13 | 3793 | ὄχλος                |
+| Mc_02:13 | 2064 | ἤρχετο               |
+| Mc_02:13 | 4314 | πρὸς                 |
+| Mc_02:13 |  846 | αὐτόν                |
+| Mc_02:13 | 2532 | καὶ                  |
+| Mc_02:13 | 1321 | ἐδίδασκεν            |
+| Mc_02:13 |  846 | αὐτούς               |
+| Mc_02:14 |      |                      |
+| Mc_02:14 | 2532 | Καὶ                  |
+| Mc_02:14 | 3855 | παράγων              |
+| Mc_02:14 | 3708 | εἶδεν                |
+| Mc_02:14 | 3018 | Λευὶν*               |
+| Mc_02:14 | 3588 | τὸν                  |
+| Mc_02:14 | 3588 | τοῦ                  |
+| Mc_02:14 |  256 | Ἁλφαίου              |
+| Mc_02:14 | 2521 | καθήμενον            |
+| Mc_02:14 | 1909 | ἐπὶ                  |
+| Mc_02:14 | 3588 | τὸ                   |
+| Mc_02:14 | 5058 | τελώνιον             |
+| Mc_02:14 | 2532 | καὶ                  |
+| Mc_02:14 | 3004 | λέγει                |
+| Mc_02:14 |  846 | αὐτῷ                 |
+| Mc_02:14 |  190 | Ἀκολούθει            |
+| Mc_02:14 | 1473 | μοι                  |
+| Mc_02:14 | 2532 | καὶ                  |
+| Mc_02:14 |  450 | ἀναστὰς              |
+| Mc_02:14 |  190 | ἠκολούθησεν          |
+| Mc_02:14 |  846 | αὐτῷ                 |
+| Mc_02:14 |      |                      |
+| Mc_02:14 |      |                      |
+| Mc_02:15 |      |                      |
+| Mc_02:15 | 2532 | Καὶ                  |
+| Mc_02:15 | 1096 | γίνεται              |
+| Mc_02:15 | 2621 | κατακεῖσθαι          |
+| Mc_02:15 |  846 | αὐτὸν                |
+| Mc_02:15 | 1722 | ἐν                   |
+| Mc_02:15 | 3588 | τῇ                   |
+| Mc_02:15 | 3614 | οἰκίᾳ                |
+| Mc_02:15 |  846 | αὐτοῦ                |
+| Mc_02:15 | 2532 | καὶ                  |
+| Mc_02:15 | 4183 | πολλοὶ               |
+| Mc_02:15 | 5057 | τελῶναι              |
+| Mc_02:15 | 2532 | καὶ                  |
+| Mc_02:15 |  268 | ἁμαρτωλοὶ            |
+| Mc_02:15 | 4873 | συνανέκειντο         |
+| Mc_02:15 | 3588 | τῷ                   |
+| Mc_02:15 | 2424 | Ἰησοῦ                |
+| Mc_02:15 | 2532 | καὶ                  |
+| Mc_02:15 | 3588 | τοῖς                 |
+| Mc_02:15 | 3101 | μαθηταῖς             |
+| Mc_02:15 |  846 | αὐτοῦ                |
+| Mc_02:15 | 1510 | ἦσαν                 |
+| Mc_02:15 | 1063 | γὰρ                  |
+| Mc_02:15 | 4183 | πολλοὶ               |
+| Mc_02:15 | 2532 | καὶ                  |
+| Mc_02:15 |  190 | ἠκολούθουν           |
+| Mc_02:15 |  846 | αὐτῷ                 |
+| Mc_02:16 |      |                      |
+| Mc_02:16 | 2532 | καὶ                  |
+| Mc_02:16 | 3588 | οἱ                   |
+| Mc_02:16 | 1122 | γραμματεῖς           |
+| Mc_02:16 | 3588 | τῶν                  |
+| Mc_02:16 | 5330 | Φαρισαίων            |
+| Mc_02:16 | 3708 | ἰδόντες              |
+| Mc_02:16 | 3754 | ὅτι                  |
+| Mc_02:16 | 2068 | ἐσθίει               |
+| Mc_02:16 | 3326 | μετὰ                 |
+| Mc_02:16 | 3588 | τῶν                  |
+| Mc_02:16 |  268 | ἁμαρτωλῶν            |
+| Mc_02:16 | 2532 | καὶ                  |
+| Mc_02:16 | 5057 | τελωνῶν              |
+| Mc_02:16 | 3004 | ἔλεγον               |
+| Mc_02:16 | 3588 | τοῖς                 |
+| Mc_02:16 | 3101 | μαθηταῖς             |
+| Mc_02:16 |  846 | αὐτοῦ                |
+| Mc_02:16 | 3754 | Ὅτι                  |
+| Mc_02:16 | 3326 | μετὰ                 |
+| Mc_02:16 | 3588 | τῶν                  |
+| Mc_02:16 | 5057 | τελωνῶν              |
+| Mc_02:16 | 2532 | καὶ                  |
+| Mc_02:16 |  268 | ἁμαρτωλῶν            |
+| Mc_02:16 | 2068 | ἐσθίει               |
+| Mc_02:17 |      |                      |
+| Mc_02:17 | 2532 | καὶ                  |
+| Mc_02:17 |  191 | ἀκούσας              |
+| Mc_02:17 | 3588 | ὁ                    |
+| Mc_02:17 | 2424 | Ἰησοῦς               |
+| Mc_02:17 | 3004 | λέγει                |
+| Mc_02:17 |  846 | αὐτοῖς               |
+| Mc_02:17 | 3754 | ὅτι                  |
+| Mc_02:17 | 3756 | Οὐ                   |
+| Mc_02:17 | 5532 | χρείαν               |
+| Mc_02:17 | 2192 | ἔχουσιν              |
+| Mc_02:17 | 3588 | οἱ                   |
+| Mc_02:17 | 2480 | ἰσχύοντες            |
+| Mc_02:17 | 2395 | ἰατροῦ               |
+| Mc_02:17 |  235 | ἀλλ'                 |
+| Mc_02:17 | 3588 | οἱ                   |
+| Mc_02:17 | 2560 | κακῶς                |
+| Mc_02:17 | 2192 | ἔχοντες              |
+| Mc_02:17 | 3756 | οὐκ                  |
+| Mc_02:17 | 2064 | ἦλθον                |
+| Mc_02:17 | 2564 | καλέσαι              |
+| Mc_02:17 | 1342 | δικαίους             |
+| Mc_02:17 |  235 | ἀλλὰ                 |
+| Mc_02:17 |  268 | ἁμαρτωλούς           |
+| Mc_02:17 |      |                      |
+| Mc_02:17 |      |                      |
+| Mc_02:17 |      |                      |
+| Mc_02:18 |      |                      |
+| Mc_02:18 | 2532 | Καὶ                  |
+| Mc_02:18 | 1510 | ἦσαν                 |
+| Mc_02:18 | 3588 | οἱ                   |
+| Mc_02:18 | 3101 | μαθηταὶ              |
+| Mc_02:18 | 2491 | Ἰωάννου*             |
+| Mc_02:18 | 2532 | καὶ                  |
+| Mc_02:18 | 3588 | οἱ                   |
+| Mc_02:18 | 5330 | Φαρισαῖοι            |
+| Mc_02:18 | 3522 | νηστεύοντες          |
+| Mc_02:18 | 2532 | καὶ                  |
+| Mc_02:18 | 2064 | ἔρχονται             |
+| Mc_02:18 | 2532 | καὶ                  |
+| Mc_02:18 | 3004 | λέγουσιν             |
+| Mc_02:18 |  846 | αὐτῷ                 |
+| Mc_02:18 | 1223 | Διὰ                  |
+| Mc_02:18 | 5101 | τί                   |
+| Mc_02:18 | 3588 | οἱ                   |
+| Mc_02:18 | 3101 | μαθηταὶ              |
+| Mc_02:18 | 2491 | Ἰωάννου*             |
+| Mc_02:18 | 2532 | καὶ                  |
+| Mc_02:18 | 3588 | οἱ                   |
+| Mc_02:18 | 3101 | μαθηταὶ              |
+| Mc_02:18 | 3588 | τῶν                  |
+| Mc_02:18 | 5330 | Φαρισαίων            |
+| Mc_02:18 | 3522 | νηστεύουσιν          |
+| Mc_02:18 | 3588 | οἱ                   |
+| Mc_02:18 | 1161 | δὲ                   |
+| Mc_02:18 | 4674 | σοὶ                  |
+| Mc_02:18 | 3101 | μαθηταὶ              |
+| Mc_02:18 | 3756 | οὐ                   |
+| Mc_02:18 | 3522 | νηστεύουσιν          |
+| Mc_02:19 |      |                      |
+| Mc_02:19 | 2532 | καὶ                  |
+| Mc_02:19 | 3004 | εἶπεν                |
+| Mc_02:19 |  846 | αὐτοῖς               |
+| Mc_02:19 | 3588 | ὁ                    |
+| Mc_02:19 | 2424 | Ἰησοῦς               |
+| Mc_02:19 | 3361 | Μὴ                   |
+| Mc_02:19 | 1410 | δύνανται             |
+| Mc_02:19 | 3588 | οἱ                   |
+| Mc_02:19 | 5207 | υἱοὶ                 |
+| Mc_02:19 | 3588 | τοῦ                  |
+| Mc_02:19 | 3567 | νυμφῶνος             |
+| Mc_02:19 | 1722 | ἐν                   |
+| Mc_02:19 | 3739 | ᾧ                    |
+| Mc_02:19 | 3588 | ὁ                    |
+| Mc_02:19 | 3566 | νυμφίος              |
+| Mc_02:19 | 3326 | μετ'                 |
+| Mc_02:19 |  846 | αὐτῶν                |
+| Mc_02:19 | 1510 | ἐστὶν                |
+| Mc_02:19 | 3522 | νηστεύειν            |
+| Mc_02:19 | 3745 | ὅσον                 |
+| Mc_02:19 | 5550 | χρόνον               |
+| Mc_02:19 | 2192 | ἔχουσιν              |
+| Mc_02:19 | 3588 | τὸν                  |
+| Mc_02:19 | 3566 | νυμφίον              |
+| Mc_02:19 | 3326 | μετ'                 |
+| Mc_02:19 |  846 | αὐτῶν                |
+| Mc_02:19 | 3756 | οὐ                   |
+| Mc_02:19 | 1410 | δύνανται             |
+| Mc_02:19 | 3522 | νηστεύειν            |
+| Mc_02:20 |      |                      |
+| Mc_02:20 | 2064 | ἐλεύσονται           |
+| Mc_02:20 | 1161 | δὲ                   |
+| Mc_02:20 | 2250 | ἡμέραι               |
+| Mc_02:20 | 3752 | ὅταν                 |
+| Mc_02:20 |  522 | ἀπαρθῇ               |
+| Mc_02:20 |  575 | ἀπ'                  |
+| Mc_02:20 |  846 | αὐτῶν                |
+| Mc_02:20 | 3588 | ὁ                    |
+| Mc_02:20 | 3566 | νυμφίος              |
+| Mc_02:20 | 2532 | καὶ                  |
+| Mc_02:20 | 5119 | τότε                 |
+| Mc_02:20 | 3522 | νηστεύσουσιν         |
+| Mc_02:20 | 1722 | ἐν                   |
+| Mc_02:20 | 1565 | ἐκείνῃ               |
+| Mc_02:20 | 3588 | τῇ                   |
+| Mc_02:20 | 2250 | ἡμέρᾳ                |
+| Mc_02:21 |      |                      |
+| Mc_02:21 | 3762 | οὐδεὶς               |
+| Mc_02:21 | 1915 | ἐπίβλημα             |
+| Mc_02:21 | 4470 | ῥάκους               |
+| Mc_02:21 |   46 | ἀγνάφου              |
+| Mc_02:21 | 1976 | ἐπιράπτει            |
+| Mc_02:21 | 1909 | ἐπὶ                  |
+| Mc_02:21 | 2440 | ἱμάτιον              |
+| Mc_02:21 | 3820 | παλαιόν              |
+| Mc_02:21 | 1487 | εἰ                   |
+| Mc_02:21 | 1161 | δὲ                   |
+| Mc_02:21 | 3361 | μή                   |
+| Mc_02:21 |  142 | αἴρει                |
+| Mc_02:21 | 3588 | τὸ                   |
+| Mc_02:21 | 4138 | πλήρωμα              |
+| Mc_02:21 |  575 | ἀπ'                  |
+| Mc_02:21 |  846 | αὐτοῦ                |
+| Mc_02:21 | 3588 | τὸ                   |
+| Mc_02:21 | 2537 | καινὸν               |
+| Mc_02:21 | 3588 | τοῦ                  |
+| Mc_02:21 | 3820 | παλαιοῦ              |
+| Mc_02:21 | 2532 | καὶ                  |
+| Mc_02:21 | 5501 | χεῖρον               |
+| Mc_02:21 | 4978 | σχίσμα               |
+| Mc_02:21 | 1096 | γίνεται              |
+| Mc_02:22 |      |                      |
+| Mc_02:22 | 2532 | καὶ                  |
+| Mc_02:22 | 3762 | οὐδεὶς               |
+| Mc_02:22 |  906 | βάλλει               |
+| Mc_02:22 | 3631 | οἶνον                |
+| Mc_02:22 | 3501 | νέον                 |
+| Mc_02:22 | 1519 | εἰς                  |
+| Mc_02:22 |  779 | ἀσκοὺς               |
+| Mc_02:22 | 3820 | παλαιούς             |
+| Mc_02:22 | 1487 | εἰ                   |
+| Mc_02:22 | 1161 | δὲ                   |
+| Mc_02:22 | 3361 | μή                   |
+| Mc_02:22 | 4486 | ῥήξει                |
+| Mc_02:22 | 3588 | ὁ                    |
+| Mc_02:22 | 3631 | οἶνος                |
+| Mc_02:22 | 3588 | τοὺς                 |
+| Mc_02:22 |  779 | ἀσκούς               |
+| Mc_02:22 | 2532 | καὶ                  |
+| Mc_02:22 | 3588 | ὁ                    |
+| Mc_02:22 | 3631 | οἶνος                |
+| Mc_02:22 |  622 | ἀπόλλυται            |
+| Mc_02:22 | 2532 | καὶ                  |
+| Mc_02:22 | 3588 | οἱ                   |
+| Mc_02:22 |  779 | ἀσκοί                |
+| Mc_02:22 |  235 | ἀλλὰ                 |
+| Mc_02:22 | 3631 | οἶνον                |
+| Mc_02:22 | 3501 | νέον                 |
+| Mc_02:22 | 1519 | εἰς                  |
+| Mc_02:22 |  779 | ἀσκοὺς               |
+| Mc_02:22 | 2537 | καινούς              |
+| Mc_02:22 |      |                      |
+| Mc_02:22 |      |                      |
+| Mc_02:22 |      |                      |
+| Mc_02:23 |      |                      |
+| Mc_02:23 | 2532 | Καὶ                  |
+| Mc_02:23 | 1096 | ἐγένετο              |
+| Mc_02:23 |  846 | αὐτὸν                |
+| Mc_02:23 | 1722 | ἐν                   |
+| Mc_02:23 | 3588 | τοῖς                 |
+| Mc_02:23 | 4521 | σάββασιν             |
+| Mc_02:23 | 3899 | παραπορεύεσθαι*      |
+| Mc_02:23 | 1223 | διὰ                  |
+| Mc_02:23 | 3588 | τῶν                  |
+| Mc_02:23 | 4702 | σπορίμων             |
+| Mc_02:23 | 2532 | καὶ                  |
+| Mc_02:23 | 3588 | οἱ                   |
+| Mc_02:23 | 3101 | μαθηταὶ              |
+| Mc_02:23 |  846 | αὐτοῦ                |
+| Mc_02:23 |  756 | ἤρξαντο              |
+| Mc_02:23 | 3598 | ὁδὸν                 |
+| Mc_02:23 | 4160 | ποιεῖν               |
+| Mc_02:23 | 5089 | τίλλοντες            |
+| Mc_02:23 | 3588 | τοὺς                 |
+| Mc_02:23 | 4719 | στάχυας              |
+| Mc_02:24 |      |                      |
+| Mc_02:24 | 2532 | καὶ                  |
+| Mc_02:24 | 3588 | οἱ                   |
+| Mc_02:24 | 5330 | Φαρισαῖοι            |
+| Mc_02:24 | 3004 | ἔλεγον               |
+| Mc_02:24 |  846 | αὐτῷ                 |
+| Mc_02:24 | 3708 | Ἴδε                  |
+| Mc_02:24 | 5101 | τί                   |
+| Mc_02:24 | 4160 | ποιοῦσιν             |
+| Mc_02:24 | 3588 | τοῖς                 |
+| Mc_02:24 | 4521 | σάββασιν             |
+| Mc_02:24 | 3739 | ὃ                    |
+| Mc_02:24 | 3756 | οὐκ                  |
+| Mc_02:24 | 1832 | ἔξεστιν              |
+| Mc_02:25 |      |                      |
+| Mc_02:25 | 2532 | καὶ                  |
+| Mc_02:25 | 3004 | λέγει                |
+| Mc_02:25 |  846 | αὐτοῖς               |
+| Mc_02:25 | 3763 | Οὐδέποτε             |
+| Mc_02:25 |  314 | ἀνέγνωτε             |
+| Mc_02:25 | 5101 | τί                   |
+| Mc_02:25 | 4160 | ἐποίησεν             |
+| Mc_02:25 | 1138 | Δαυίδ*               |
+| Mc_02:25 | 3753 | ὅτε                  |
+| Mc_02:25 | 5532 | χρείαν               |
+| Mc_02:25 | 2192 | ἔσχεν                |
+| Mc_02:25 | 2532 | καὶ                  |
+| Mc_02:25 | 3983 | ἐπείνασεν            |
+| Mc_02:25 |  846 | αὐτὸς                |
+| Mc_02:25 | 2532 | καὶ                  |
+| Mc_02:25 | 3588 | οἱ                   |
+| Mc_02:25 | 3326 | μετ'                 |
+| Mc_02:25 |  846 | αὐτοῦ                |
+| Mc_02:26 |      |                      |
+| Mc_02:26 | 4459 | πῶς                  |
+| Mc_02:26 | 1525 | εἰσῆλθεν             |
+| Mc_02:26 | 1519 | εἰς                  |
+| Mc_02:26 | 3588 | τὸν                  |
+| Mc_02:26 | 3624 | οἶκον                |
+| Mc_02:26 | 3588 | τοῦ                  |
+| Mc_02:26 | 2316 | θεοῦ                 |
+| Mc_02:26 | 1909 | ἐπὶ                  |
+| Mc_02:26 |    8 | Ἀβιάθαρ              |
+| Mc_02:26 |  749 | ἀρχιερέως            |
+| Mc_02:26 | 2532 | καὶ                  |
+| Mc_02:26 | 3588 | τοὺς                 |
+| Mc_02:26 |  740 | ἄρτους               |
+| Mc_02:26 | 3588 | τῆς                  |
+| Mc_02:26 | 4286 | προθέσεως            |
+| Mc_02:26 | 5315 | ἔφαγεν               |
+| Mc_02:26 | 3739 | οὓς                  |
+| Mc_02:26 | 3756 | οὐκ                  |
+| Mc_02:26 | 1832 | ἔξεστιν              |
+| Mc_02:26 | 5315 | φαγεῖν               |
+| Mc_02:26 | 1487 | εἰ                   |
+| Mc_02:26 | 3361 | μὴ                   |
+| Mc_02:26 | 3588 | τοὺς                 |
+| Mc_02:26 | 2409 | ἱερεῖς               |
+| Mc_02:26 | 2532 | καὶ                  |
+| Mc_02:26 | 1325 | ἔδωκεν               |
+| Mc_02:26 | 2532 | καὶ                  |
+| Mc_02:26 | 3588 | τοῖς                 |
+| Mc_02:26 | 4862 | σὺν                  |
+| Mc_02:26 |  846 | αὐτῷ                 |
+| Mc_02:26 | 1510 | οὖσιν                |
+| Mc_02:27 |      |                      |
+| Mc_02:27 | 2532 | καὶ                  |
+| Mc_02:27 | 3004 | ἔλεγεν               |
+| Mc_02:27 |  846 | αὐτοῖς               |
+| Mc_02:27 | 3588 | Τὸ                   |
+| Mc_02:27 | 4521 | σάββατον             |
+| Mc_02:27 | 1223 | διὰ                  |
+| Mc_02:27 | 3588 | τὸν                  |
+| Mc_02:27 |  444 | ἄνθρωπον             |
+| Mc_02:27 | 1096 | ἐγένετο              |
+| Mc_02:27 | 2532 | καὶ                  |
+| Mc_02:27 | 3756 | οὐχ                  |
+| Mc_02:27 | 3588 | ὁ                    |
+| Mc_02:27 |  444 | ἄνθρωπος             |
+| Mc_02:27 | 1223 | διὰ                  |
+| Mc_02:27 | 3588 | τὸ                   |
+| Mc_02:27 | 4521 | σάββατον             |
+| Mc_02:28 |      |                      |
+| Mc_02:28 | 5620 | ὥστε                 |
+| Mc_02:28 | 2962 | κύριός               |
+| Mc_02:28 | 1510 | ἐστιν                |
+| Mc_02:28 | 3588 | ὁ                    |
+| Mc_02:28 | 5207 | υἱὸς                 |
+| Mc_02:28 | 3588 | τοῦ                  |
+| Mc_02:28 |  444 | ἀνθρώπου             |
+| Mc_02:28 | 2532 | καὶ                  |
+| Mc_02:28 | 3588 | τοῦ                  |
+| Mc_02:28 | 4521 | σαββάτου             |
+
+*** current
+*** TODO en fait, mettre un signe # avant le strong number, pour le transformer en chaîne et préserver les 4 chiffre - ou alors transformer les nombres <1000 et >9000
+
+#+name: bibliotheque
+#+BEGIN_SRC elisp
+  (defun normalize-strong-number(target)
+  "normalisation à 4 chiffres des n° strong à un, deux ou 3 chiffre
+  
+  les n° strong sont repérés comme 1, 2 ou 3 chiffres compris entre deux '|', séparés d'eux par un ou plusieurs blancs à gauche, et un blanc unique à droite
+  target is the name of a table : the search will be on '^\\+tblname: ' concatened with target"
+  ;    (save-excursion
+   ;     (save-restriction
+          (goto-char (point-min))
+          (goto-char (search-forward-regexp (concat "^#\\+tblname: " target)))
+          (org-narrow-to-element)
+      
+          ;; normalisation à 4 chiffres des n° strong à un seul chiffre
+     ;     (goto-char (point-min))
+      ;    (replace-regexp "^| *word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9]\\) *|" "| word | \\1 | \\2 | 000\\3 |")
+          
+          ;; normalisation à 4 chiffres des n° strong à deux chiffres
+       ;   (goto-char (point-min))
+        ;  (replace-regexp "^| *word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9][0-9]\\) *|" "| word | \\1 | \\2 | 00\\3 |")
+          
+          ;; normalisation à 4 chiffres des n° strong à 3 chiffres
+         ; (goto-char (point-min))
+         ; (replace-regexp "^| word *| *\\([^|]*?\\) *| *\\([^|]*?\\) *| *\\([1-9][0-9][0-9]\\) *|" "| word | \\1 | \\2 | 0\\3 |"))))
+  
+  )
+#+END_SRC
+
+#+RESULTS: bibliotheque
+: normalize-strong-number
+
+
+#+name: rebuild-phrases
+#+BEGIN_SRC elisp
+(normalize-strong-number "extract-sandbox")
+#+END_SRC
+
+#+RESULTS: rebuild-phrases
+: 84088
+
+#+tblname: extract-sandbox
+| L_C:v    | NNNN | greek                |
+| <8>      |  <4> | <20>                 |
+| Mc       |      |                      |
+| Mc_01    |      |                      |
+|          |      |                      |
+|          |      |                      |
+|          |      |                      |
+| Mc_01:01 |      |                      |
+| Mc_01:01 |  746 | ΑΡΧΗ                 |
+| Mc_01:01 | 3588 | τοῦ                  |
+| Mc_01:01 | 2098 | εὐαγγελίου           |
+| Mc_01:01 | 2424 | Ἰησοῦ                |
+| Mc_01:01 | 5547 | Χριστοῦ              |
+| Mc_01:01 | 5207 | [υἱοῦ                |
+| Mc_01:01 | 2316 | θεοῦ]                |
+| Mc_01:01 |      |                      |
+| Mc_01:01 |      |                      |
+| Mc_01:02 |      |                      |
+
+
+
+
+
+
+** recherche des occurences
+
+"^| word *| \\([^|]*?\\) *| \\([^|]*?\\) | \\([0-9]\\{4\\}\\)\\(.*\n\\)\\{1,100\\}| word *| \\([^|]*?\\) *| \\([^|]*?\\) | \\(\\3\\)"
+
+
+
+
+
+
+
+* <¤START¤>texte de Mc 1 et Mc 2 ex "mark-1.htm"
+
+#+tblname: book
